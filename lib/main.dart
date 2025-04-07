@@ -1,17 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart'; // Import dotenv to load .env file
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Supabase.initialize(
-    url:
-        'https://jlipihosbermbnaolpme.supabase.co', // <-- Replace with your URL
-    anonKey:
-        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpsaXBpaG9zYmVybWJuYW9scG1lIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDQwNDI2MDgsImV4cCI6MjA1OTYxODYwOH0.Did1Nan5xTBXDPD06WZdaY_5uhY8qktoSUWFu4B3uGQ', // <-- Replace with your anon/public key
-  );
+  // Load environment variables from .env file
+  await dotenv.load();
+
+  // Fetch Supabase URL and API key from .env
+  final supabaseUrl = dotenv.env['SUPABASE_URL']!;
+  final supabaseKey = dotenv.env['SUPABASE_ANON_KEY']!;
+
+  // Initialize Supabase with values from .env
+  await Supabase.initialize(url: supabaseUrl, anonKey: supabaseKey);
 
   runApp(MyApp());
 }
