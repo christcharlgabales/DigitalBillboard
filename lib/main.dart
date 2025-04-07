@@ -8,7 +8,7 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Load environment variables from .env file
-  await dotenv.load();
+  await dotenv.load(fileName: ".env");
 
   // Fetch Supabase URL and API key from .env
   final supabaseUrl = dotenv.env['SUPABASE_URL']!;
