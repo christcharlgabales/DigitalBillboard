@@ -3,6 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'view_locations_screen.dart';
 import 'login_screen.dart';
+import 'billboard_tracking_screen.dart'; // ✅ Add this import
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -17,12 +18,10 @@ class HomeScreen extends StatelessWidget {
 
   Future<void> _sendLocation(BuildContext context) async {
     try {
-      // Show a loading indicator
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Getting your location...')));
 
-      // Request and check location permissions
       final hasPermission = await Geolocator.checkPermission();
       if (hasPermission == LocationPermission.denied ||
           hasPermission == LocationPermission.deniedForever) {
@@ -36,12 +35,10 @@ class HomeScreen extends StatelessWidget {
         }
       }
 
-      // Get current position
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
 
-      // Get the current user
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -52,89 +49,43 @@ class HomeScreen extends StatelessWidget {
         return;
       }
 
-      // Print debug information for Supabase client
-      print('SUPABASE URL: ${Supabase.instance.client.supabaseUrl}');
-      print(
-        'AUTHENTICATED: ${Supabase.instance.client.auth.currentSession != null}',
-      );
+      final insertData = {
+        'user_id': user.id,
+        'latitude': position.latitude,
+        'longitude': position.longitude,
+        'timestamp': DateTime.now().toUtc().toIso8601String(),
+      };
 
-      // Print debug information for insert
-      print('USER ID: ${user.id}');
-      print('LATITUDE: ${position.latitude}');
-      print('LONGITUDE: ${position.longitude}');
-      print('TIMESTAMP: ${DateTime.now().toIso8601String()}');
+      final response = await Supabase.instance.client
+          .from('locations')
+          .insert(insertData);
 
-      // Try a direct query first to check permissions
-      try {
-        final checkQuery = await Supabase.instance.client
-            .from('locations')
-            .select('count')
-            .limit(1);
+      await Future.delayed(const Duration(milliseconds: 500));
 
-        print('CHECK QUERY RESPONSE: $checkQuery');
-      } catch (checkError) {
-        print('CHECK QUERY ERROR: $checkError');
-      }
+      final testQuery = await Supabase.instance.client
+          .from('locations')
+          .select()
+          .eq('user_id', user.id);
 
-      // Insert location data with explicit error handling
-      try {
-        final insertData = {
-          'user_id': user.id,
-          'latitude': position.latitude,
-          'longitude': position.longitude,
-          'timestamp': DateTime.now().toIso8601String(),
-        };
-
-        print('ATTEMPTING TO INSERT: $insertData');
-
-        // Using the specific insert syntax recommended in latest Supabase docs
-        final response = await Supabase.instance.client
-            .from('locations')
-            .insert(insertData);
-
-        print('INSERT RESPONSE: $response');
-
-        // Add a small delay to ensure database consistency
-        await Future.delayed(const Duration(milliseconds: 500));
-
-        // Query to verify data was saved
-        final testQuery = await Supabase.instance.client
-            .from('locations')
-            .select()
-            .eq('user_id', user.id);
-
-        print('QUERY RESPONSE LENGTH: ${testQuery.length}');
-        print('QUERY RESPONSE DATA: $testQuery');
-
-        if (testQuery.isEmpty) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text(
-                'Location sent but not found in database. Please check Supabase RLS policies.',
-              ),
+      if (testQuery.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Location sent but not found in database. Check RLS.',
             ),
-          );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location sent successfully!')),
-          );
-
-          // Navigate to view locations screen to see the saved location
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => const ViewLocationsScreen(),
-            ),
-          );
-        }
-      } catch (dbError) {
-        print('DATABASE ERROR: $dbError');
-        ScaffoldMessenger.of(
+          ),
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location sent successfully!')),
+        );
+        Navigator.push(
           context,
-        ).showSnackBar(SnackBar(content: Text('Database error: $dbError')));
+          MaterialPageRoute(builder: (context) => const ViewLocationsScreen()),
+        );
       }
     } catch (e) {
-      print('GENERAL ERROR: $e');
+      print('ERROR: $e');
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(SnackBar(content: Text('Error sending location: $e')));
@@ -212,12 +163,29 @@ class HomeScreen extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 _buildOptionButton(
-                  context,
-                  'View Alerts',
-                  Icons.notification_important,
+                  title: 'View Alerts',
+                  icon: Icons.notification_important,
+                  onPressed: () {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('🚧 View Alerts coming soon'),
+                      ),
+                    );
+                  },
                 ),
                 SizedBox(width: 20),
-                _buildOptionButton(context, 'View Route', Icons.directions_car),
+                _buildOptionButton(
+                  title: 'Start Tracking',
+                  icon: Icons.gps_fixed,
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => BillboardTrackingScreen(),
+                      ),
+                    );
+                  },
+                ),
               ],
             ),
             SizedBox(height: 30),
@@ -239,14 +207,13 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildOptionButton(BuildContext context, String title, IconData icon) {
+  Widget _buildOptionButton({
+    required String title,
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
     return ElevatedButton(
-      onPressed: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(builder: (context) => const ViewLocationsScreen()),
-        );
-      },
+      onPressed: onPressed,
       style: ElevatedButton.styleFrom(
         backgroundColor: Colors.redAccent,
         padding: EdgeInsets.symmetric(vertical: 15.0, horizontal: 20.0),

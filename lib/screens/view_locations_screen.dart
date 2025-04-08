@@ -46,6 +46,17 @@ class _ViewLocationsScreenState extends State<ViewLocationsScreen> {
 
       setState(() {
         _locations = List<Map<String, dynamic>>.from(data);
+        for (var loc in _locations) {
+          final rawTime = loc['timestamp'];
+          final dt =
+              DateTime.parse(
+                rawTime,
+              ).toLocal(); // Ensure time is converted to local
+
+          print('RAW TIMESTAMP: $rawTime');
+          print('AS LOCAL: ${dt.toLocal()}');
+        }
+
         _loading = false;
       });
     } catch (e) {
@@ -58,9 +69,9 @@ class _ViewLocationsScreenState extends State<ViewLocationsScreen> {
 
   String _formatDateTime(String isoString) {
     try {
-      final dateTime = DateTime.parse(isoString);
+      final dateTime = DateTime.parse(isoString).toLocal(); // Ensure .toLocal()
       final formatter = DateFormat('MMM d, yyyy - h:mm a');
-      return formatter.format(dateTime.toLocal());
+      return formatter.format(dateTime);
     } catch (e) {
       return 'Invalid date';
     }
