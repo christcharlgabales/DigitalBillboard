@@ -15,6 +15,7 @@ dependencies:
   http: ^0.13.5 # for sending HTTP requests
   supabase_flutter: ^1.10.10 # for connecting to Supabase
   flutter_dotenv: ^5.0.2 # <-- Add this line to load .env file
+  intl: ^0.18.0 # or the latest version
 
 dev_dependencies:
   flutter_test:
