@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'dart:async';
 
 class BillboardTrackingScreen extends StatefulWidget {
   const BillboardTrackingScreen({super.key});
@@ -11,155 +12,120 @@ class BillboardTrackingScreen extends StatefulWidget {
 }
 
 class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
-  final supabase = Supabase.instance.client;
-
   List<Map<String, dynamic>> billboards = [];
   Map<String, dynamic>? selectedBillboard;
   bool isTracking = false;
-  Stream<Position>? positionStream;
+  StreamSubscription<Position>? _positionStream;
 
   @override
   void initState() {
     super.initState();
-    _loadBillboards();
+    fetchBillboards();
   }
 
-  Future<void> _loadBillboards() async {
-    final response = await supabase.from('billboards').select();
+  Future<void> fetchBillboards() async {
+    final response = await Supabase.instance.client.from('billboards').select();
     setState(() {
       billboards = List<Map<String, dynamic>>.from(response);
     });
   }
 
-  void _startTracking() {
-    final userId = supabase.auth.currentUser!.id;
+  void startTracking() {
+    if (selectedBillboard == null) return;
 
-    positionStream = Geolocator.getPositionStream(
+    setState(() => isTracking = true);
+
+    _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 10,
       ),
-    );
-
-    positionStream!.listen((position) async {
-      final currentLat = position.latitude;
-      final currentLng = position.longitude;
-      final billboardLat = selectedBillboard!['latitude'];
-      final billboardLng = selectedBillboard!['longitude'];
-
-      double distance = Geolocator.distanceBetween(
-        currentLat,
-        currentLng,
-        billboardLat,
-        billboardLng,
+    ).listen((Position position) async {
+      final double distance = Geolocator.distanceBetween(
+        position.latitude,
+        position.longitude,
+        selectedBillboard!['latitude'],
+        selectedBillboard!['longitude'],
       );
 
-      print('Distance: $distance m');
+      print('Distance: $distance meters');
 
       if (distance < 50) {
-        // ✅ Within range, trigger alert
-        await supabase.from('alerts').insert({
-          'user_id': userId,
+        // Trigger alert
+        await Supabase.instance.client.from('alerts').insert({
+          'user_id': Supabase.instance.client.auth.currentUser!.id,
           'billboard_id': selectedBillboard!['id'],
         });
-        setState(() {
-          isTracking = false;
-        });
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('🚨 Alert triggered within 50 meters!')),
-        );
-      }
-    });
 
-    setState(() {
-      isTracking = true;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('📢 Alert triggered!')));
+
+        _positionStream?.cancel();
+        setState(() => isTracking = false);
+      }
     });
   }
 
-  Widget _buildBillboardCard(Map<String, dynamic> billboard) {
-    return ListTile(
-      title: Text(billboard['name']),
-      subtitle: Text('Location: ${billboard['location']}'),
-      onTap: () {
-        setState(() {
-          selectedBillboard = billboard;
-        });
-      },
-      trailing: Icon(
-        Icons.radio_button_checked,
-        color:
-            selectedBillboard?['id'] == billboard['id']
-                ? Colors.redAccent
-                : Colors.grey,
-      ),
-    );
+  void stopTracking() {
+    _positionStream?.cancel();
+    setState(() => isTracking = false);
+  }
+
+  @override
+  void dispose() {
+    _positionStream?.cancel();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Select Billboard & Track'),
+        title: const Text('Select a Billboard'),
         backgroundColor: Colors.redAccent,
       ),
       body: Padding(
         padding: const EdgeInsets.all(16.0),
-        child:
-            selectedBillboard == null
-                ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Select a Billboard:',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Expanded(
-                      child: ListView(
-                        children: billboards.map(_buildBillboardCard).toList(),
-                      ),
-                    ),
-                  ],
+        child: Column(
+          children: [
+            DropdownButtonFormField<Map<String, dynamic>>(
+              isExpanded: true,
+              decoration: const InputDecoration(
+                labelText: 'Choose a billboard',
+              ),
+              value: selectedBillboard,
+              items:
+                  billboards.map((billboard) {
+                    return DropdownMenuItem(
+                      value: billboard,
+                      child: Text(billboard['name']),
+                    );
+                  }).toList(),
+              onChanged: (value) => setState(() => selectedBillboard = value),
+            ),
+            const SizedBox(height: 30),
+            isTracking
+                ? ElevatedButton.icon(
+                  onPressed: stopTracking,
+                  icon: const Icon(Icons.pause),
+                  label: const Text('Stop Tracking'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
                 )
-                : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Selected Billboard:',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Card(
-                      child: ListTile(
-                        title: Text(selectedBillboard!['name']),
-                        subtitle: Text(
-                          'Lat: ${selectedBillboard!['latitude']}, Lng: ${selectedBillboard!['longitude']}',
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    ElevatedButton.icon(
-                      icon: Icon(Icons.gps_fixed),
-                      label: Text(
-                        isTracking ? 'Tracking...' : 'Start Tracking',
-                      ),
-                      onPressed: isTracking ? null : _startTracking,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.redAccent,
-                        padding: EdgeInsets.symmetric(
-                          horizontal: 20,
-                          vertical: 12,
-                        ),
-                      ),
-                    ),
-                  ],
+                : ElevatedButton.icon(
+                  onPressed: selectedBillboard == null ? null : startTracking,
+                  icon: const Icon(Icons.play_arrow),
+                  label: const Text('Start Tracking'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                  ),
                 ),
+          ],
+        ),
       ),
     );
   }

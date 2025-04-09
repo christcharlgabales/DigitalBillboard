@@ -3,7 +3,7 @@ import 'package:geolocator/geolocator.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'view_locations_screen.dart';
 import 'login_screen.dart';
-import 'billboard_tracking_screen.dart'; // ✅ Add this import
+import 'billboard_tracking_screen.dart'; // ✅ Added
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -22,10 +22,10 @@ class HomeScreen extends StatelessWidget {
         context,
       ).showSnackBar(const SnackBar(content: Text('Getting your location...')));
 
-      final hasPermission = await Geolocator.checkPermission();
-      if (hasPermission == LocationPermission.denied ||
-          hasPermission == LocationPermission.deniedForever) {
-        final permission = await Geolocator.requestPermission();
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied ||
+          permission == LocationPermission.deniedForever) {
+        permission = await Geolocator.requestPermission();
         if (permission == LocationPermission.denied ||
             permission == LocationPermission.deniedForever) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -56,9 +56,7 @@ class HomeScreen extends StatelessWidget {
         'timestamp': DateTime.now().toUtc().toIso8601String(),
       };
 
-      final response = await Supabase.instance.client
-          .from('locations')
-          .insert(insertData);
+      await Supabase.instance.client.from('locations').insert(insertData);
 
       await Future.delayed(const Duration(milliseconds: 500));
 
@@ -122,8 +120,8 @@ class HomeScreen extends StatelessWidget {
               color: Colors.redAccent.withOpacity(0.1),
               child: Padding(
                 padding: const EdgeInsets.symmetric(
-                  vertical: 20.0,
-                  horizontal: 30.0,
+                  vertical: 20,
+                  horizontal: 30,
                 ),
                 child: Column(
                   children: [
@@ -146,7 +144,7 @@ class HomeScreen extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.w500,
-                        color: const Color.fromARGB(255, 22, 20, 20),
+                        color: Colors.black87,
                       ),
                     ),
                   ],
