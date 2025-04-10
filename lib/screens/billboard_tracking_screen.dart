@@ -35,6 +35,9 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
 
     setState(() => isTracking = true);
 
+    final userId = Supabase.instance.client.auth.currentUser!.id;
+    bool hasTriggered = false;
+
     _positionStream = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
@@ -50,19 +53,28 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
 
       print('Distance: $distance meters');
 
-      if (distance < 50) {
-        // Trigger alert
+      if (distance < 50 && !hasTriggered) {
+        // Trigger alert if not already triggered
         await Supabase.instance.client.from('alerts').insert({
-          'user_id': Supabase.instance.client.auth.currentUser!.id,
+          'user_id': userId,
           'billboard_id': selectedBillboard!['id'],
         });
 
+        hasTriggered = true;
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(const SnackBar(content: Text('📢 Alert triggered!')));
+      } else if (distance >= 50 && hasTriggered) {
+        // Remove alert if user moves out of radius
+        await Supabase.instance.client.from('alerts').delete().match({
+          'user_id': userId,
+          'billboard_id': selectedBillboard!['id'],
+        });
 
-        _positionStream?.cancel();
-        setState(() => isTracking = false);
+        hasTriggered = false;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('✅ Alert cleared!')));
       }
     });
   }

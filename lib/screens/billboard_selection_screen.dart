@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import 'tracking_screen.dart';
+import 'billboard_screen.dart'; // Import the new alert display screen
 
 class BillboardSelectionScreen extends StatefulWidget {
   const BillboardSelectionScreen({super.key});
@@ -47,10 +47,9 @@ class _BillboardSelectionScreenState extends State<BillboardSelectionScreen> {
                     context,
                     MaterialPageRoute(
                       builder:
-                          (_) => TrackingScreen(
-                            billboardLat: b['latitude'],
-                            billboardLng: b['longitude'],
+                          (_) => BillboardScreen(
                             billboardId: b['id'],
+                            billboardName: b['code'] ?? 'Unnamed',
                           ),
                     ),
                   );
