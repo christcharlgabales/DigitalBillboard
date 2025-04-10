@@ -14,6 +14,8 @@ class _BillboardSelectionScreenState extends State<BillboardSelectionScreen> {
   final supabase = Supabase.instance.client;
   List<dynamic> billboards = [];
   dynamic selectedBillboard;
+  bool isLoading = true;
+  bool hasError = false;
 
   @override
   void initState() {
@@ -22,14 +24,46 @@ class _BillboardSelectionScreenState extends State<BillboardSelectionScreen> {
   }
 
   Future<void> fetchBillboards() async {
+    setState(() {
+      isLoading = true;
+      hasError = false;
+    });
     try {
       final response = await supabase.from('billboards').select();
       setState(() {
         billboards = response;
+        isLoading = false;
       });
     } catch (e) {
-      debugPrint('Error fetching billboards: $e');
+      setState(() {
+        hasError = true;
+        isLoading = false;
+      });
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text("Failed to load billboards: $e")));
     }
+  }
+
+  void startTracking() {
+    if (selectedBillboard == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Please select a billboard to continue.")),
+      );
+      return;
+    }
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder:
+            (_) => TrackingScreen(
+              billboardLat: selectedBillboard['latitude'],
+              billboardLng: selectedBillboard['longitude'],
+              billboardId: selectedBillboard['id'],
+            ),
+      ),
+    );
   }
 
   @override
@@ -41,54 +75,65 @@ class _BillboardSelectionScreenState extends State<BillboardSelectionScreen> {
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            const Text("Choose a billboard"),
-            const SizedBox(height: 8),
-            DropdownButtonFormField<dynamic>(
-              items:
-                  billboards.map<DropdownMenuItem<dynamic>>((billboard) {
-                    return DropdownMenuItem(
-                      value: billboard,
-                      child: Text(
-                        '${billboard['name']} - ${billboard['location']}',
-                      ),
-                    );
-                  }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  selectedBillboard = value;
-                });
-              },
-              decoration: const InputDecoration(border: UnderlineInputBorder()),
-            ),
-            const SizedBox(height: 32),
-            ElevatedButton.icon(
-              onPressed:
-                  selectedBillboard == null
-                      ? null
-                      : () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder:
-                                (_) => TrackingScreen(
-                                  billboardLat: selectedBillboard['latitude'],
-                                  billboardLng: selectedBillboard['longitude'],
-                                  billboardId: selectedBillboard['id'],
-                                ),
-                          ),
-                        );
+        child:
+            isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : hasError
+                ? const Center(child: Text("Error loading billboards."))
+                : billboards.isEmpty
+                ? const Center(child: Text("No billboards available."))
+                : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "Choose a billboard",
+                      style: TextStyle(fontSize: 16),
+                    ),
+                    const SizedBox(height: 10),
+                    DropdownButtonFormField<dynamic>(
+                      items:
+                          billboards.map<DropdownMenuItem<dynamic>>((
+                            billboard,
+                          ) {
+                            return DropdownMenuItem(
+                              value: billboard,
+                              child: Text(
+                                '${billboard['name']} - ${billboard['location']}',
+                              ),
+                            );
+                          }).toList(),
+                      onChanged: (value) {
+                        setState(() {
+                          selectedBillboard = value;
+                        });
                       },
-              icon: const Icon(Icons.play_arrow),
-              label: const Text("Start Tracking"),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.redAccent,
-                foregroundColor: Colors.white,
-              ),
-            ),
-          ],
-        ),
+                      value: selectedBillboard,
+                      decoration: const InputDecoration(
+                        border: OutlineInputBorder(),
+                        contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                      ),
+                    ),
+                    const SizedBox(height: 30),
+                    Center(
+                      child: ElevatedButton.icon(
+                        onPressed:
+                            selectedBillboard == null ? null : startTracking,
+                        icon: const Icon(Icons.play_arrow),
+                        label: const Text("Start Tracking"),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
+                          ),
+                          backgroundColor: Colors.redAccent,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.grey[300],
+                          disabledForegroundColor: Colors.black38,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
       ),
     );
   }
