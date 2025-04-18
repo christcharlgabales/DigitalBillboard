@@ -56,6 +56,8 @@ class HomeScreen extends StatelessWidget {
         'timestamp': DateTime.now().toUtc().toIso8601String(),
       };
 
+      await Supabase.instance.client.from('locations').insert(insertData);
+
       await Future.delayed(const Duration(milliseconds: 500));
 
       final testQuery = await Supabase.instance.client
