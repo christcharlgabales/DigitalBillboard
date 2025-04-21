@@ -26,6 +26,7 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
   Map<String, StreamSubscription<Position>> positionStreams = {};
 
   GoogleMapController? _mapController;
+  bool _mapInitialized = false;
 
   final Set<Circle> _circles = {};
   final Set<Marker> _markers = {};
@@ -130,6 +131,11 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
           }
           isLoading = false;
         });
+
+        // Update map markers after fetching billboards
+        if (_mapInitialized) {
+          updateMap();
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -141,9 +147,29 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
     }
   }
 
+  void toggleTracking(String billboardId) {
+    final bool isCurrentlyTracking = trackingStatus[billboardId] ?? false;
+
+    if (isCurrentlyTracking) {
+      stopTrackingById(billboardId);
+    } else {
+      // Find the billboard data from the list
+      final billboardData = billboards.firstWhere(
+        (b) => b['id'] == billboardId,
+        orElse: () => <String, dynamic>{},
+      );
+
+      if (billboardData.isNotEmpty) {
+        setState(() {
+          selectedBillboard = billboardData;
+        });
+        startTracking();
+      }
+    }
+  }
+
   void startTracking() async {
     if (selectedBillboard == null) return;
-    if (_mapController == null) return;
 
     final String billboardId = selectedBillboard!['id'];
 
@@ -177,7 +203,16 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
           currentPosition = newPosition;
         });
 
-        _mapController?.animateCamera(CameraUpdate.newLatLng(newPosition));
+        // Only animate camera if map controller is initialized
+        if (_mapInitialized && _mapController != null) {
+          try {
+            await _mapController!.animateCamera(
+              CameraUpdate.newLatLng(newPosition),
+            );
+          } catch (e) {
+            print('Error animating camera: $e');
+          }
+        }
 
         // Calculate distance for this specific billboard
         final billboardData = billboards.firstWhere(
@@ -255,7 +290,10 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
           }
         }
 
-        updateMap();
+        // Only update map if it's initialized
+        if (_mapInitialized) {
+          updateMap();
+        }
       },
       onError: (dynamic error) {
         if (mounted) {
@@ -266,13 +304,19 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
         }
       },
     );
+
+    if (_mapInitialized) {
+      updateMap();
+    }
   }
 
   void stopTracking() {
     if (selectedBillboard == null) return;
-
     final String billboardId = selectedBillboard!['id'];
+    stopTrackingById(billboardId);
+  }
 
+  void stopTrackingById(String billboardId) {
     positionStreams[billboardId]?.cancel();
     positionStreams.remove(billboardId);
 
@@ -281,10 +325,14 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
       // We don't reset triggerStatus here as it will be cleared when
       // user gets back in range
     });
+
+    if (_mapInitialized) {
+      updateMap();
+    }
   }
 
   void updateMap() {
-    if (!mounted) return;
+    if (!mounted || !_mapInitialized || _mapController == null) return;
 
     _markers.clear();
     _circles.clear();
@@ -310,9 +358,18 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
             position: billboardLatLng,
             infoWindow: InfoWindow(
               title: billboard['name'] ?? 'Billboard',
-              snippet: isTracking ? 'Currently tracking' : 'Not tracking',
+              snippet: isTracking ? 'Currently tracking' : 'Tap to track',
             ),
             icon: BitmapDescriptor.defaultMarkerWithHue(markerHue),
+            onTap: () {
+              // When marker is tapped, update selected billboard in dropdown
+              setState(() {
+                selectedBillboard = billboard;
+              });
+
+              // Show the bottom sheet instead of trying to show info window
+              _showBillboardBottomSheet(billboard);
+            },
           ),
         );
 
@@ -346,6 +403,72 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
     setState(() {});
   }
 
+  void _showBillboardBottomSheet(Map<String, dynamic> billboard) {
+    final String billboardId = billboard['id'];
+    final bool isTracking = trackingStatus[billboardId] ?? false;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Container(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    billboard['name'] ?? 'Billboard',
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Latitude: ${billboard['latitude']}, Longitude: ${billboard['longitude']}',
+                    style: Theme.of(context).textTheme.bodyMedium,
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        if (isTracking) {
+                          stopTrackingById(billboardId);
+                        } else {
+                          setState(() {
+                            selectedBillboard = billboard;
+                          });
+                          startTracking();
+                        }
+                        // Update the bottom sheet UI
+                        setModalState(() {});
+                        // Close the bottom sheet
+                        Navigator.pop(context);
+                      },
+                      icon: Icon(isTracking ? Icons.pause : Icons.play_arrow),
+                      label: Text(
+                        isTracking ? 'Stop Tracking' : 'Start Tracking',
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor:
+                            isTracking ? Colors.grey : Colors.redAccent,
+                        foregroundColor: Colors.white,
+                        minimumSize: const Size(double.infinity, 48),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
   @override
   void dispose() {
     // Cancel all active position streams
@@ -353,8 +476,18 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
       stream.cancel();
     }
     positionStreams.clear();
-    _mapController?.dispose();
+
+    // Make sure to dispose controller safely
+    if (_mapInitialized && _mapController != null) {
+      _mapController!.dispose();
+    }
     super.dispose();
+  }
+
+  void _onMapCreated(GoogleMapController controller) {
+    _mapController = controller;
+    _mapInitialized = true;
+    updateMap();
   }
 
   @override
@@ -450,22 +583,29 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
                               onChanged: (value) {
                                 if (value != null) {
                                   setState(() => selectedBillboard = value);
-                                  if (_mapController != null &&
+                                  if (_mapInitialized &&
+                                      _mapController != null &&
                                       value['latitude'] != null &&
                                       value['longitude'] != null) {
-                                    _mapController!.animateCamera(
-                                      CameraUpdate.newLatLng(
-                                        LatLng(
-                                          value['latitude'] as double,
-                                          value['longitude'] as double,
+                                    try {
+                                      _mapController!.animateCamera(
+                                        CameraUpdate.newLatLng(
+                                          LatLng(
+                                            value['latitude'] as double,
+                                            value['longitude'] as double,
+                                          ),
                                         ),
-                                      ),
-                                    );
-                                    _mapController!.animateCamera(
-                                      CameraUpdate.zoomTo(17),
-                                    );
+                                      );
+                                      _mapController!.animateCamera(
+                                        CameraUpdate.zoomTo(17),
+                                      );
+                                    } catch (e) {
+                                      print('Error animating camera: $e');
+                                    }
                                   }
-                                  updateMap();
+                                  if (_mapInitialized) {
+                                    updateMap();
+                                  }
                                 }
                               },
                             ),
@@ -473,10 +613,7 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
                   Expanded(
                     child: GoogleMap(
                       initialCameraPosition: initialCameraPosition,
-                      onMapCreated: (GoogleMapController controller) {
-                        _mapController = controller;
-                        updateMap();
-                      },
+                      onMapCreated: _onMapCreated,
                       myLocationEnabled: true,
                       myLocationButtonEnabled: true,
                       mapToolbarEnabled: true,
