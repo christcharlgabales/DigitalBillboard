@@ -16,13 +16,15 @@ class BillboardTrackingScreen extends StatefulWidget {
 class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
   List<Map<String, dynamic>> billboards = [];
   Map<String, dynamic>? selectedBillboard;
-  bool isTracking = false;
-  bool hasTriggered = false;
   LatLng? currentPosition;
   bool isLoading = true;
   String? errorMessage;
 
-  StreamSubscription<Position>? _positionStream;
+  // Maps to track state per billboard
+  Map<String, bool> trackingStatus = {};
+  Map<String, bool> triggerStatus = {};
+  Map<String, StreamSubscription<Position>> positionStreams = {};
+
   GoogleMapController? _mapController;
 
   final Set<Circle> _circles = {};
@@ -143,20 +145,24 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
     if (selectedBillboard == null) return;
     if (_mapController == null) return;
 
-    setState(() => isTracking = true);
+    final String billboardId = selectedBillboard!['id'];
+
+    setState(() {
+      trackingStatus[billboardId] = true;
+    });
 
     final currentUser = Supabase.instance.client.auth.currentUser;
     if (currentUser == null) {
       setState(() {
         errorMessage = 'User is not logged in';
-        isTracking = false;
+        trackingStatus[billboardId] = false;
       });
       return;
     }
 
     final userId = currentUser.id;
 
-    _positionStream = Geolocator.getPositionStream(
+    positionStreams[billboardId] = Geolocator.getPositionStream(
       locationSettings: const LocationSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 10,
@@ -173,36 +179,45 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
 
         _mapController?.animateCamera(CameraUpdate.newLatLng(newPosition));
 
-        // Make sure all required values are present before calculating distance
-        if (selectedBillboard == null ||
-            selectedBillboard!['latitude'] == null ||
-            selectedBillboard!['longitude'] == null) {
+        // Calculate distance for this specific billboard
+        final billboardData = billboards.firstWhere(
+          (b) => b['id'] == billboardId,
+          orElse: () => <String, dynamic>{},
+        );
+
+        if (billboardData.isEmpty ||
+            billboardData['latitude'] == null ||
+            billboardData['longitude'] == null) {
           return;
         }
 
         final double distance = Geolocator.distanceBetween(
           position.latitude,
           position.longitude,
-          selectedBillboard!['latitude'] as double,
-          selectedBillboard!['longitude'] as double,
+          billboardData['latitude'] as double,
+          billboardData['longitude'] as double,
         );
 
-        print('Distance: $distance meters');
+        print('Distance to ${billboardData['name']}: $distance meters');
 
-        // Use 50 meters as the radius, same as your OpenStreetMap implementation
-        if (distance < 50 && !hasTriggered) {
+        // Use 50 meters as the radius
+        if (distance < 50 && !(triggerStatus[billboardId] ?? false)) {
           try {
             await Supabase.instance.client.from('alerts').insert({
               'user_id': userId,
-              'billboard_id': selectedBillboard!['id'],
+              'billboard_id': billboardId,
             });
 
             if (mounted) {
               setState(() {
-                hasTriggered = true;
+                triggerStatus[billboardId] = true;
               });
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('📢 Alert triggered!')),
+                SnackBar(
+                  content: Text(
+                    '📢 Alert triggered for ${billboardData['name']}!',
+                  ),
+                ),
               );
             }
           } catch (e) {
@@ -212,20 +227,24 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
               );
             }
           }
-        } else if (distance >= 50 && hasTriggered) {
+        } else if (distance >= 50 && (triggerStatus[billboardId] ?? false)) {
           try {
             await Supabase.instance.client.from('alerts').delete().match({
               'user_id': userId,
-              'billboard_id': selectedBillboard!['id'],
+              'billboard_id': billboardId,
             });
 
             if (mounted) {
               setState(() {
-                hasTriggered = false;
+                triggerStatus[billboardId] = false;
               });
-              ScaffoldMessenger.of(
-                context,
-              ).showSnackBar(const SnackBar(content: Text('✅ Alert cleared!')));
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    '✅ Alert cleared for ${billboardData['name']}!',
+                  ),
+                ),
+              );
             }
           } catch (e) {
             if (mounted) {
@@ -242,7 +261,7 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
         if (mounted) {
           setState(() {
             errorMessage = 'Location stream error: $error';
-            isTracking = false;
+            trackingStatus[billboardId] = false;
           });
         }
       },
@@ -250,10 +269,17 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
   }
 
   void stopTracking() {
-    _positionStream?.cancel();
+    if (selectedBillboard == null) return;
+
+    final String billboardId = selectedBillboard!['id'];
+
+    positionStreams[billboardId]?.cancel();
+    positionStreams.remove(billboardId);
+
     setState(() {
-      isTracking = false;
-      hasTriggered = false;
+      trackingStatus[billboardId] = false;
+      // We don't reset triggerStatus here as it will be cleared when
+      // user gets back in range
     });
   }
 
@@ -263,37 +289,49 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
     _markers.clear();
     _circles.clear();
 
-    if (selectedBillboard != null &&
-        selectedBillboard!['latitude'] != null &&
-        selectedBillboard!['longitude'] != null) {
-      final billboardLatLng = LatLng(
-        selectedBillboard!['latitude'] as double,
-        selectedBillboard!['longitude'] as double,
-      );
+    // Add markers and circles for all billboards
+    for (final billboard in billboards) {
+      if (billboard['latitude'] != null && billboard['longitude'] != null) {
+        final billboardLatLng = LatLng(
+          billboard['latitude'] as double,
+          billboard['longitude'] as double,
+        );
 
-      _markers.add(
-        Marker(
-          markerId: const MarkerId('billboard'),
-          position: billboardLatLng,
-          infoWindow: InfoWindow(
-            title: selectedBillboard!['name'] ?? 'Billboard',
+        final String billboardId = billboard['id'];
+        final bool isTracking = trackingStatus[billboardId] ?? false;
+
+        // Use a different hue for tracked billboards
+        final double markerHue =
+            isTracking ? BitmapDescriptor.hueGreen : BitmapDescriptor.hueRed;
+
+        _markers.add(
+          Marker(
+            markerId: MarkerId('billboard_$billboardId'),
+            position: billboardLatLng,
+            infoWindow: InfoWindow(
+              title: billboard['name'] ?? 'Billboard',
+              snippet: isTracking ? 'Currently tracking' : 'Not tracking',
+            ),
+            icon: BitmapDescriptor.defaultMarkerWithHue(markerHue),
           ),
-          icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-        ),
-      );
+        );
 
-      _circles.add(
-        Circle(
-          circleId: const CircleId('billboardRadius'),
-          center: billboardLatLng,
-          radius: 50, // 50 meters, matching your OpenStreetMap implementation
-          fillColor: Colors.red.withOpacity(0.3),
-          strokeColor: Colors.red,
-          strokeWidth: 2,
-        ),
-      );
+        if (isTracking) {
+          _circles.add(
+            Circle(
+              circleId: CircleId('billboardRadius_$billboardId'),
+              center: billboardLatLng,
+              radius: 50, // 50 meters
+              fillColor: Colors.green.withOpacity(0.3),
+              strokeColor: Colors.green,
+              strokeWidth: 2,
+            ),
+          );
+        }
+      }
     }
 
+    // Add current user location marker
     if (currentPosition != null) {
       _markers.add(
         Marker(
@@ -310,7 +348,11 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
 
   @override
   void dispose() {
-    _positionStream?.cancel();
+    // Cancel all active position streams
+    for (final stream in positionStreams.values) {
+      stream.cancel();
+    }
+    positionStreams.clear();
     _mapController?.dispose();
     super.dispose();
   }
@@ -322,6 +364,11 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
       target: currentPosition ?? const LatLng(8.949962, 125.581300),
       zoom: 15,
     );
+
+    final bool isCurrentBillboardTracking =
+        selectedBillboard != null
+            ? (trackingStatus[selectedBillboard!['id']] ?? false)
+            : false;
 
     return Scaffold(
       appBar: AppBar(
@@ -375,13 +422,28 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
                                   billboards.isEmpty
                                       ? []
                                       : billboards.map((billboard) {
+                                        final bool isTracking =
+                                            trackingStatus[billboard['id']] ??
+                                            false;
                                         return DropdownMenuItem<
                                           Map<String, dynamic>
                                         >(
                                           value: billboard,
-                                          child: Text(
-                                            billboard['name'] ??
-                                                'Unnamed Billboard',
+                                          child: Row(
+                                            children: [
+                                              Expanded(
+                                                child: Text(
+                                                  billboard['name'] ??
+                                                      'Unnamed Billboard',
+                                                ),
+                                              ),
+                                              if (isTracking)
+                                                const Icon(
+                                                  Icons.track_changes,
+                                                  color: Colors.green,
+                                                  size: 18,
+                                                ),
+                                            ],
                                           ),
                                         );
                                       }).toList(),
@@ -400,9 +462,7 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
                                       ),
                                     );
                                     _mapController!.animateCamera(
-                                      CameraUpdate.zoomTo(
-                                        17,
-                                      ), // Match the zoom level from your OSM implementation
+                                      CameraUpdate.zoomTo(17),
                                     );
                                   }
                                   updateMap();
@@ -428,7 +488,7 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
                   Padding(
                     padding: const EdgeInsets.all(16.0),
                     child:
-                        isTracking
+                        isCurrentBillboardTracking
                             ? ElevatedButton.icon(
                               onPressed: stopTracking,
                               icon: const Icon(Icons.pause),
@@ -453,6 +513,29 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
                               ),
                             ),
                   ),
+                  if (positionStreams.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(
+                        bottom: 16.0,
+                        left: 16.0,
+                        right: 16.0,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.info_outline,
+                            size: 16,
+                            color: Colors.blue,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            'Tracking ${positionStreams.length} billboard${positionStreams.length > 1 ? 's' : ''}',
+                            style: TextStyle(color: Colors.blue),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
     );
