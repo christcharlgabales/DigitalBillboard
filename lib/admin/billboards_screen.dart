@@ -21,6 +21,8 @@ class _BillboardsScreenState extends State<BillboardsScreen> {
   final TextEditingController _latController = TextEditingController();
   final TextEditingController _lngController = TextEditingController();
 
+  final Color maroonColor = const Color(0xFF8B3E3E);
+
   @override
   void initState() {
     super.initState();
@@ -95,7 +97,7 @@ class _BillboardsScreenState extends State<BillboardsScreen> {
         'longitude': lng,
         'name': 'New Billboard',
         'location': 'Unknown Location',
-        'image_url': '', // Optional: adjust based on schema
+        'image_url': '',
         'active': false,
       });
       _latController.clear();
@@ -141,7 +143,7 @@ class _BillboardsScreenState extends State<BillboardsScreen> {
       SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFF8B3E3E),
+        backgroundColor: maroonColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
@@ -159,31 +161,39 @@ class _BillboardsScreenState extends State<BillboardsScreen> {
       padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          // Welcome + Date
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text(
-                'Welcome Back!',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
-              ),
-              Text(
-                '${DateTime.now().toLocal().toString().split(' ')[0]}',
-                style: const TextStyle(fontSize: 16),
-              ),
-            ],
+          // Top bar: Welcome + Date
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              border: Border.all(color: Colors.black, width: 2),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Welcome Back Christ!',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                Text(
+                  '${_formattedDate()}',
+                  style: const TextStyle(fontSize: 14),
+                ),
+              ],
+            ),
           ),
           const SizedBox(height: 16),
 
           // Map
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
-            child: SizedBox(
+            child: Container(
               height: 250,
+              decoration: BoxDecoration(
+                border: Border.all(color: Colors.black, width: 2),
+              ),
               child: GoogleMap(
-                onMapCreated: (controller) {
-                  mapController = controller;
-                },
+                onMapCreated: (controller) => mapController = controller,
                 initialCameraPosition: const CameraPosition(
                   target: LatLng(8.9526, 125.5298), // Butuan City
                   zoom: 13,
@@ -196,135 +206,238 @@ class _BillboardsScreenState extends State<BillboardsScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Add New Billboard
-          Card(
-            elevation: 3,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Add New Billboard',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          // 2 columns: Add + Details
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Add New Billboard card
+              Expanded(
+                child: Card(
+                  color: maroonColor,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextField(
+                  child: Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Add New Billboard',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
                           controller: _latController,
                           decoration: const InputDecoration(
                             labelText: 'Latitude',
+                            labelStyle: TextStyle(color: Colors.white),
+                            enabledBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(color: Colors.white),
+                            ),
+                            focusedBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(color: Colors.white),
+                            ),
                           ),
+                          style: const TextStyle(color: Colors.white),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: TextField(
+                        const SizedBox(height: 12),
+                        TextField(
                           controller: _lngController,
                           decoration: const InputDecoration(
                             labelText: 'Longitude',
+                            labelStyle: TextStyle(color: Colors.white),
+                            enabledBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(color: Colors.white),
+                            ),
+                            focusedBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(color: Colors.white),
+                            ),
                           ),
+                          style: const TextStyle(color: Colors.white),
                         ),
-                      ),
-                      const SizedBox(width: 12),
-                      ElevatedButton(
-                        onPressed: _addBillboard,
-                        child: const Text('Save'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color(0xFF8B3E3E),
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Billboard Details Card
-          if (_selectedBillboard != null)
-            Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _selectedBillboard!['location'] ?? 'Unknown Location',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text('Latitude: ${_selectedBillboard!['latitude']}'),
-                    Text('Longitude: ${_selectedBillboard!['longitude']}'),
-                    const SizedBox(height: 8),
-                    if (_selectedBillboard!['image_url'] != null &&
-                        _selectedBillboard!['image_url'] != '')
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          _selectedBillboard!['image_url'],
-                          height: 120,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                        ),
-                      ),
-                    const SizedBox(height: 8),
-                    Row(
-                      children: [
+                        const SizedBox(height: 16),
                         ElevatedButton.icon(
-                          onPressed: () {
-                            _toggleActiveStatus(_selectedBillboard!);
-                          },
-                          icon: Icon(
-                            _selectedBillboard!['active'] == true
-                                ? Icons.toggle_on
-                                : Icons.toggle_off,
-                          ),
-                          label: Text(
-                            _selectedBillboard!['active'] == true
-                                ? 'Deactivate'
-                                : 'Activate',
+                          onPressed: _addBillboard,
+                          icon: const Icon(Icons.save, color: Colors.black),
+                          label: const Text(
+                            'Save',
+                            style: TextStyle(color: Colors.black),
                           ),
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFF8B3E3E),
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            _deleteBillboard(_selectedBillboard!['id']);
-                          },
-                          icon: const Icon(Icons.delete),
-                          label: const Text('Delete'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            foregroundColor: Colors.white,
+                            backgroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
                           ),
                         ),
                       ],
                     ),
-                  ],
+                  ),
                 ),
               ),
-            ),
+              const SizedBox(width: 16),
+
+              // Billboard Details Card
+              Expanded(
+                child:
+                    _selectedBillboard != null
+                        ? Card(
+                          color: Colors.black,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (_selectedBillboard!['image_url'] != null &&
+                                    _selectedBillboard!['image_url'] != '')
+                                  ClipRRect(
+                                    borderRadius: BorderRadius.circular(8),
+                                    child: Image.network(
+                                      _selectedBillboard!['image_url'],
+                                      height: 120,
+                                      width: double.infinity,
+                                      fit: BoxFit.cover,
+                                    ),
+                                  ),
+                                const SizedBox(height: 12),
+                                Text('Location', style: _detailLabelStyle()),
+                                Text(
+                                  _selectedBillboard!['location'] ?? 'Unknown',
+                                  style: _detailValueStyle(),
+                                ),
+                                const SizedBox(height: 8),
+                                Text('Latitude', style: _detailLabelStyle()),
+                                Text(
+                                  '${_selectedBillboard!['latitude']}',
+                                  style: _detailValueStyle(),
+                                ),
+                                const SizedBox(height: 8),
+                                Text('Longitude', style: _detailLabelStyle()),
+                                Text(
+                                  '${_selectedBillboard!['longitude']}',
+                                  style: _detailValueStyle(),
+                                ),
+                                const SizedBox(height: 12),
+                                Container(
+                                  width: double.infinity,
+                                  color: Colors.grey[900],
+                                  padding: const EdgeInsets.all(8),
+                                  child: Text(
+                                    'Billboard Number\nBB - ${_selectedBillboard!['id'].toString().padLeft(3, '0')}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                Row(
+                                  children: [
+                                    ElevatedButton.icon(
+                                      onPressed:
+                                          () => _toggleActiveStatus(
+                                            _selectedBillboard!,
+                                          ),
+                                      icon: Icon(
+                                        _selectedBillboard!['active'] == true
+                                            ? Icons.toggle_on
+                                            : Icons.toggle_off,
+                                        color: Colors.white,
+                                      ),
+                                      label: Text(
+                                        _selectedBillboard!['active'] == true
+                                            ? 'Deactivate'
+                                            : 'Activate',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: maroonColor,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    ElevatedButton.icon(
+                                      onPressed:
+                                          () => _deleteBillboard(
+                                            _selectedBillboard!['id'],
+                                          ),
+                                      icon: const Icon(
+                                        Icons.delete,
+                                        color: Colors.white,
+                                      ),
+                                      label: const Text(
+                                        'Delete',
+                                        style: TextStyle(color: Colors.white),
+                                      ),
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.red,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        )
+                        : const SizedBox.shrink(),
+              ),
+            ],
+          ),
         ],
       ),
     );
+  }
+
+  TextStyle _detailLabelStyle() =>
+      const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold);
+
+  TextStyle _detailValueStyle() =>
+      const TextStyle(color: Colors.white, fontSize: 14);
+
+  String _formattedDate() {
+    final now = DateTime.now();
+    return '${_weekday(now.weekday)}, ${_month(now.month)} ${now.day}, ${now.year}';
+  }
+
+  String _weekday(int day) {
+    const days = [
+      'Monday',
+      'Tuesday',
+      'Wednesday',
+      'Thursday',
+      'Friday',
+      'Saturday',
+      'Sunday',
+    ];
+    return days[day - 1];
+  }
+
+  String _month(int month) {
+    const months = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    return months[month - 1];
   }
 
   @override
