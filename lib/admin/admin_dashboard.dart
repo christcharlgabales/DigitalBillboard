@@ -199,7 +199,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Welcome Back $userName!',
+                'Welcome back $userName!',
                 style: const TextStyle(
                   fontSize: 22,
                   fontWeight: FontWeight.bold,
@@ -281,7 +281,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       case 2:
         return const BillboardsScreen();
       case 3:
-        return const LogsContent();
+        return const LogsScreen();
       default:
         return _buildDashboardContent();
     }
