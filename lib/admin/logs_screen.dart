@@ -14,6 +14,8 @@ class _LogsScreenState extends State<LogsScreen> {
   bool _isLoading = true;
   String _selectedLogType = 'All';
   final List<String> _logTypes = ['All', 'Emergency', 'System', 'User'];
+  final Color _primaryColor = const Color(0xFF8B3E3E);
+  int _totalLogs = 0;
 
   @override
   void initState() {
@@ -88,18 +90,21 @@ class _LogsScreenState extends State<LogsScreen> {
 
             setState(() {
               _logs = allLogs;
+              _totalLogs = allLogs.length;
               _isLoading = false;
             });
           } catch (e) {
             print('Error fetching additional logs: $e');
             setState(() {
               _logs = alerts;
+              _totalLogs = alerts.length;
               _isLoading = false;
             });
           }
         } else {
           setState(() {
             _logs = alerts;
+            _totalLogs = alerts.length;
             _isLoading = false;
           });
         }
@@ -120,6 +125,7 @@ class _LogsScreenState extends State<LogsScreen> {
 
         setState(() {
           _logs = logs;
+          _totalLogs = logs.length;
           _isLoading = false;
         });
       }
@@ -127,6 +133,7 @@ class _LogsScreenState extends State<LogsScreen> {
       print('Error loading logs: $e');
       setState(() {
         _logs = [];
+        _totalLogs = 0;
         _isLoading = false;
       });
       _showMessage('Error loading logs: ${e.toString().substring(0, 100)}');
@@ -140,44 +147,10 @@ class _LogsScreenState extends State<LogsScreen> {
       SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: const Color(0xFF8B3E3E),
+        backgroundColor: _primaryColor,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
-  }
-
-  Color _getLogTypeColor(String type) {
-    switch (type) {
-      case 'Emergency':
-        return Colors.red;
-      case 'System':
-        return Colors.blue;
-      case 'User':
-        return Colors.green;
-      default:
-        return Colors.grey;
-    }
-  }
-
-  Icon _getLogTypeIcon(String type) {
-    switch (type) {
-      case 'Emergency':
-        return Icon(Icons.warning_amber, color: Colors.white);
-      case 'System':
-        return Icon(Icons.computer, color: Colors.white);
-      case 'User':
-        return Icon(Icons.person, color: Colors.white);
-      default:
-        return Icon(Icons.info, color: Colors.white);
-    }
-  }
-
-  void _filterLogs(String type) {
-    setState(() {
-      _selectedLogType = type;
-      _isLoading = true;
-    });
-    _loadLogs();
   }
 
   @override
@@ -188,111 +161,215 @@ class _LogsScreenState extends State<LogsScreen> {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'System Logs',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-              ),
-              // Filter dropdown
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                decoration: BoxDecoration(
-                  border: Border.all(color: Colors.grey.shade300),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: DropdownButton<String>(
-                  value: _selectedLogType,
-                  icon: const Icon(Icons.filter_list),
-                  underline: SizedBox(),
-                  onChanged: (String? newValue) {
-                    if (newValue != null) {
-                      _filterLogs(newValue);
-                    }
-                  },
-                  items:
-                      _logTypes.map<DropdownMenuItem<String>>((String value) {
-                        return DropdownMenuItem<String>(
-                          value: value,
-                          child: Text(value),
-                        );
-                      }).toList(),
-                ),
-              ),
-            ],
-          ),
-        ),
-        Expanded(
-          child:
-              _logs.isEmpty
-                  ? Center(child: Text('No logs found'))
-                  : Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                    child: Card(
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+    return Scaffold(
+      backgroundColor: Colors.black,
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'Alert Logs',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: ListView.builder(
-                          itemCount: _logs.length,
-                          itemBuilder: (context, index) {
-                            final log = _logs[index];
-                            final timestamp = DateFormat(
-                              'MMM d, y HH:mm',
-                            ).format(DateTime.parse(log['created_at']));
-                            final logType = log['type'] ?? 'Unknown';
-
-                            return ListTile(
-                              leading: CircleAvatar(
-                                backgroundColor: _getLogTypeColor(logType),
-                                child: _getLogTypeIcon(logType),
-                              ),
-                              title: Text(
-                                log['message'] ??
-                                    log['description'] ??
-                                    'Log entry',
-                              ),
-                              subtitle: Row(
-                                children: [
-                                  Text(timestamp),
-                                  SizedBox(width: 10),
-                                  Chip(
-                                    label: Text(
-                                      logType,
-                                      style: TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 10,
-                                      ),
-                                    ),
-                                    backgroundColor: _getLogTypeColor(logType),
-                                    padding: EdgeInsets.zero,
-                                    materialTapTargetSize:
-                                        MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                  if (log['user'] != null) ...[
-                                    SizedBox(width: 10),
-                                    Text('User: ${log['user']}'),
-                                  ],
-                                ],
-                              ),
-                              isThreeLine: true,
-                              dense: true,
-                            );
-                          },
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.white, width: 2),
+                      ),
+                      child: Center(
+                        child: Text(
+                          'i',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
+                  ],
+                ),
+                Text(
+                  'Total: $_totalLogs',
+                  style: TextStyle(fontSize: 16, color: Colors.white),
+                ),
+              ],
+            ),
+            const SizedBox(height: 24),
+            Container(
+              decoration: BoxDecoration(color: Colors.black),
+              child: Table(
+                columnWidths: const {
+                  0: FlexColumnWidth(1.2),
+                  1: FlexColumnWidth(1),
+                  2: FlexColumnWidth(1.2),
+                  3: FlexColumnWidth(1.2),
+                  4: FlexColumnWidth(1),
+                  5: FlexColumnWidth(1),
+                },
+                children: [
+                  TableRow(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Colors.grey.shade800,
+                          width: 1,
+                        ),
+                      ),
+                    ),
+                    children: [
+                      _buildTableHeader('Date'),
+                      _buildTableHeader('Time'),
+                      _buildTableHeader('Billboard No.'),
+                      _buildTableHeader('EV Number'),
+                      _buildTableHeader('Type'),
+                      _buildTableHeader('Result'),
+                    ],
                   ),
+                ],
+              ),
+            ),
+            Expanded(
+              child:
+                  _logs.isEmpty
+                      ? Center(
+                        child: Text(
+                          'No logs found',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                      )
+                      : ListView.builder(
+                        itemCount: _logs.length,
+                        itemBuilder: (context, index) {
+                          final log = _logs[index];
+                          final dateTime = DateTime.parse(log['created_at']);
+                          final date = DateFormat(
+                            'MM - dd - yyyy',
+                          ).format(dateTime);
+                          final time = DateFormat('h:mm a').format(dateTime);
+
+                          // Handle different log formats
+                          final billboardNo = log['billboard_id'] ?? 'BB - 001';
+                          final evNumber =
+                              log['ev_number'] ??
+                              (log['vehicle_id'] ?? 'Unknown');
+                          final type =
+                              log['alert_type'] ??
+                              (log['auto_manual'] ?? 'Unknown');
+                          final result =
+                              log['result'] ?? (log['status'] ?? 'Success');
+
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 8.0),
+                            child: Table(
+                              columnWidths: const {
+                                0: FlexColumnWidth(1.2),
+                                1: FlexColumnWidth(1),
+                                2: FlexColumnWidth(1.2),
+                                3: FlexColumnWidth(1.2),
+                                4: FlexColumnWidth(1),
+                                5: FlexColumnWidth(1),
+                              },
+                              children: [
+                                TableRow(
+                                  decoration: BoxDecoration(
+                                    border: Border(
+                                      bottom: BorderSide(
+                                        color: Colors.grey.shade800,
+                                        width: 1,
+                                      ),
+                                    ),
+                                  ),
+                                  children: [
+                                    _buildTableCell(date),
+                                    _buildTableCell(time),
+                                    _buildTableCell(billboardNo),
+                                    _buildTableCell(evNumber),
+                                    _buildTableCell(type),
+                                    _buildTableCell(result),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+            ),
+
+            const SizedBox(height: 16),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                ElevatedButton.icon(
+                  icon: const Icon(
+                    Icons.playlist_add_check,
+                    color: Colors.white,
+                  ),
+                  label: const Text(
+                    'Select',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey.shade800,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  onPressed: () {
+                    // Implement select functionality
+                  },
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton.icon(
+                  icon: const Icon(Icons.close, color: Colors.white),
+                  label: const Text(
+                    'Clear',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.grey.shade800,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                  ),
+                  onPressed: () {
+                    // Implement clear functionality
+                  },
+                ),
+              ],
+            ),
+          ],
         ),
-      ],
+      ),
+    );
+  }
+
+  Widget _buildTableHeader(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
+      child: Text(
+        text,
+        style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+      ),
+    );
+  }
+
+  Widget _buildTableCell(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16.0, horizontal: 8.0),
+      child: Text(text, style: TextStyle(color: Colors.white)),
     );
   }
 }
