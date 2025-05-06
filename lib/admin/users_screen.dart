@@ -74,12 +74,12 @@ class _UsersScreenState extends State<UsersScreen> {
         return;
       }
 
-      // Deactivate driver
+      // Deactivate driver - use lowercase 'inactive' to match the constraint
       await Supabase.instance.client
           .from('users')
           .update({
-            'status': 'Inactive',
-            'last_use': DateTime.now().toIso8601String(),
+            'status':
+                'inactive', // Changed to lowercase to match database constraint
           })
           .eq('ev_registration_no', evNumber);
 
@@ -357,16 +357,8 @@ class _UsersScreenState extends State<UsersScreen> {
                                       itemCount: _inactiveDrivers.length,
                                       itemBuilder: (context, index) {
                                         final driver = _inactiveDrivers[index];
-                                        final lastUse =
-                                            driver['last_use'] != null
-                                                ? DateFormat(
-                                                  'MMMM d, y',
-                                                ).format(
-                                                  DateTime.parse(
-                                                    driver['last_use'],
-                                                  ),
-                                                )
-                                                : 'Unknown';
+                                        // Remove reference to last_use since it doesn't exist
+                                        // And use ev_registration_no instead of ev_number
 
                                         return Padding(
                                           padding: const EdgeInsets.symmetric(
@@ -377,13 +369,15 @@ class _UsersScreenState extends State<UsersScreen> {
                                                 MainAxisAlignment.spaceBetween,
                                             children: [
                                               Text(
-                                                driver['ev_number'] ?? '',
+                                                driver['ev_registration_no'] ??
+                                                    '', // Changed from ev_number to ev_registration_no
                                                 style: const TextStyle(
                                                   color: Colors.white,
                                                 ),
                                               ),
                                               Text(
-                                                lastUse,
+                                                driver['name'] ??
+                                                    'Unknown', // Show driver name instead of last_use
                                                 style: const TextStyle(
                                                   color: Colors.white70,
                                                 ),
