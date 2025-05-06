@@ -277,11 +277,11 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       case 0:
         return _buildDashboardContent();
       case 1:
-        return UsersContent();
+        return const UsersScreen(); // Using our newly created UsersScreen
       case 2:
-        return BillboardsContent();
+        return const BillboardsScreen();
       case 3:
-        return LogsContent();
+        return const LogsContent();
       default:
         return _buildDashboardContent();
     }
@@ -446,54 +446,36 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 }
 
-// Placeholder Widgets for content sections - You'll implement these in separate files
-class UsersContent extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Users Management',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-          ),
-          SizedBox(height: 20),
-          Expanded(
-            child: Center(child: Text('User management content will go here')),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// Note: We've removed the placeholder UsersContent class as it's been replaced
+// with the actual implementation in users_screen.dart
 
-class BillboardsContent extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.all(20.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Billboard Management',
-            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+// Placeholder widgets for content sections that don't have implementations yet
+
+@override
+Widget build(BuildContext context) {
+  return Padding(
+    padding: const EdgeInsets.all(20.0),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Billboard Management',
+          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+        ),
+        SizedBox(height: 20),
+        Expanded(
+          child: Center(
+            child: Text('Billboard management content will go here'),
           ),
-          SizedBox(height: 20),
-          Expanded(
-            child: Center(
-              child: Text('Billboard management content will go here'),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+        ),
+      ],
+    ),
+  );
 }
 
 class LogsContent extends StatelessWidget {
+  const LogsContent({super.key});
+
   @override
   Widget build(BuildContext context) {
     return Padding(

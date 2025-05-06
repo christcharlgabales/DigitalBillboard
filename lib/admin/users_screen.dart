@@ -2,38 +2,94 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 
-class AdminHomeScreen extends StatefulWidget {
-  const AdminHomeScreen({super.key});
+class UsersScreen extends StatefulWidget {
+  const UsersScreen({super.key});
 
   @override
-  State<AdminHomeScreen> createState() => _AdminHomeScreenState();
+  State<UsersScreen> createState() => _UsersScreenState();
 }
 
-class _AdminHomeScreenState extends State<AdminHomeScreen> {
-  List<Map<String, dynamic>> _users = [];
+class _UsersScreenState extends State<UsersScreen> {
+  List<Map<String, dynamic>> _activeDrivers = [];
+  List<Map<String, dynamic>> _inactiveDrivers = [];
   bool _isLoading = true;
+  final TextEditingController _evNumberController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
-    _loadUsers();
+    _loadDrivers();
   }
 
-  Future<void> _loadUsers() async {
+  @override
+  void dispose() {
+    _evNumberController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadDrivers() async {
     try {
-      final response = await Supabase.instance.client
-          .from('profiles')
-          .select('*')
-          .order('created_at', ascending: false);
+      // Fetch active drivers
+      final activeResponse = await Supabase.instance.client
+          .from('ev_drivers')
+          .select()
+          .eq('status', 'Active')
+          .order('name');
+
+      // Fetch inactive drivers
+      final inactiveResponse = await Supabase.instance.client
+          .from('ev_drivers')
+          .select()
+          .eq('status', 'Inactive')
+          .order('last_use', ascending: false);
 
       setState(() {
-        _users = List<Map<String, dynamic>>.from(response);
+        _activeDrivers = List<Map<String, dynamic>>.from(activeResponse);
+        _inactiveDrivers = List<Map<String, dynamic>>.from(inactiveResponse);
         _isLoading = false;
       });
     } catch (e) {
-      print('Error loading users: $e');
+      print('Error loading drivers: $e');
       setState(() => _isLoading = false);
-      _showMessage('Error loading users');
+      _showMessage('Error loading drivers');
+    }
+  }
+
+  Future<void> _deactivateDriver() async {
+    final evNumber = _evNumberController.text.trim().toUpperCase();
+    if (evNumber.isEmpty) {
+      _showMessage('Please enter an EV Number');
+      return;
+    }
+
+    try {
+      // Find the driver with the given EV number
+      final driverResponse = await Supabase.instance.client
+          .from('ev_drivers')
+          .select()
+          .eq('ev_number', evNumber)
+          .eq('status', 'Active');
+
+      if (driverResponse.isEmpty) {
+        _showMessage('No active driver found with EV Number: $evNumber');
+        return;
+      }
+
+      // Update the driver status to inactive
+      await Supabase.instance.client
+          .from('ev_drivers')
+          .update({
+            'status': 'Inactive',
+            'last_use': DateTime.now().toIso8601String(),
+          })
+          .eq('ev_number', evNumber);
+
+      _showMessage('Driver deactivated successfully');
+      _evNumberController.clear();
+      _loadDrivers(); // Refresh the lists
+    } catch (e) {
+      print('Error deactivating driver: $e');
+      _showMessage('Error deactivating driver');
     }
   }
 
@@ -58,100 +114,319 @@ class _AdminHomeScreenState extends State<AdminHomeScreen> {
       );
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                'User Management',
-                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header with title and count
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16.0),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Row(
+                  children: [
+                    Text(
+                      'EV Drivers ',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Icon(Icons.people),
+                  ],
+                ),
+                Text(
+                  'Total: ${_activeDrivers.length}',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+          ),
+
+          // Active drivers table
+          Expanded(
+            flex: 3,
+            child: Card(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
               ),
-              ElevatedButton.icon(
-                onPressed: () {
-                  // TODO: Add new user functionality
-                },
-                icon: Icon(Icons.add),
-                label: Text('Add User'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF8B3E3E),
-                  foregroundColor: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  children: [
+                    // Table header
+                    Table(
+                      columnWidths: const {
+                        0: FlexColumnWidth(2),
+                        1: FlexColumnWidth(1.5),
+                        2: FlexColumnWidth(1.5),
+                        3: FlexColumnWidth(2),
+                        4: FlexColumnWidth(1),
+                        5: FlexColumnWidth(1),
+                      },
+                      children: [
+                        TableRow(
+                          decoration: BoxDecoration(
+                            border: Border(
+                              bottom: BorderSide(color: Colors.grey.shade300),
+                            ),
+                          ),
+                          children: [
+                            _tableHeader('Name'),
+                            _tableHeader('Role'),
+                            _tableHeader('EV Number'),
+                            _tableHeader('Email'),
+                            _tableHeader('Status'),
+                            _tableHeader('Action'),
+                          ],
+                        ),
+                      ],
+                    ),
+
+                    // Table body
+                    Expanded(
+                      child:
+                          _activeDrivers.isEmpty
+                              ? Center(child: Text('No active drivers found'))
+                              : ListView.builder(
+                                itemCount: _activeDrivers.length,
+                                itemBuilder: (context, index) {
+                                  final driver = _activeDrivers[index];
+                                  return Table(
+                                    columnWidths: const {
+                                      0: FlexColumnWidth(2),
+                                      1: FlexColumnWidth(1.5),
+                                      2: FlexColumnWidth(1.5),
+                                      3: FlexColumnWidth(2),
+                                      4: FlexColumnWidth(1),
+                                      5: FlexColumnWidth(1),
+                                    },
+                                    children: [
+                                      TableRow(
+                                        decoration: BoxDecoration(
+                                          border: Border(
+                                            bottom: BorderSide(
+                                              color: Colors.grey.shade200,
+                                            ),
+                                          ),
+                                        ),
+                                        children: [
+                                          _tableCell(driver['name'] ?? ''),
+                                          _tableCell(driver['role'] ?? ''),
+                                          _tableCell(driver['ev_number'] ?? ''),
+                                          _tableCell(driver['email'] ?? ''),
+                                          _tableCell(driver['status'] ?? ''),
+                                          Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 8.0,
+                                            ),
+                                            child: TextButton(
+                                              onPressed: () {
+                                                // Navigate to logs view or show logs dialog
+                                              },
+                                              child: Text(
+                                                'View Logs',
+                                                style: TextStyle(
+                                                  color: Color(0xFF8B3E3E),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                    ),
+                  ],
                 ),
               ),
-            ],
+            ),
           ),
-        ),
-        Expanded(
-          child:
-              _users.isEmpty
-                  ? Center(child: Text('No users found'))
-                  : Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                    child: Card(
-                      elevation: 4,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Padding(
-                        padding: const EdgeInsets.all(16.0),
-                        child: ListView.builder(
-                          itemCount: _users.length,
-                          itemBuilder: (context, index) {
-                            final user = _users[index];
-                            final lastSignIn =
-                                user['last_sign_in'] != null
-                                    ? DateFormat('MMM d, y').format(
-                                      DateTime.parse(user['last_sign_in']),
-                                    )
-                                    : 'Never';
 
-                            return ListTile(
-                              leading: CircleAvatar(
-                                child: Text(
-                                  (user['full_name'] ?? user['email'] ?? 'U')[0]
-                                      .toUpperCase(),
+          const SizedBox(height: 16),
+
+          // Bottom section with deactivate and inactive drivers
+          Expanded(
+            flex: 2,
+            child: Row(
+              children: [
+                // Deactivate driver section
+                Expanded(
+                  child: Card(
+                    color: Colors.grey.shade900,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Text(
+                              'Deactivate EV Driver',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextField(
+                                  controller: _evNumberController,
+                                  decoration: InputDecoration(
+                                    hintText: 'Enter EV Number',
+                                    filled: true,
+                                    fillColor: Colors.white,
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(30),
+                                      borderSide: BorderSide.none,
+                                    ),
+                                    contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                    ),
+                                  ),
                                 ),
                               ),
-                              title: Text(
-                                user['full_name'] ?? user['email'] ?? 'Unknown',
-                              ),
-                              subtitle: Text('Last active: $lastSignIn'),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    icon: Icon(Icons.edit, color: Colors.blue),
-                                    onPressed: () {
-                                      // TODO: Edit user
-                                    },
+                              const SizedBox(width: 10),
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  borderRadius: BorderRadius.circular(30),
+                                ),
+                                child: IconButton(
+                                  icon: Icon(
+                                    Icons.arrow_forward,
+                                    color: Colors.grey.shade900,
                                   ),
-                                  IconButton(
-                                    icon: Icon(Icons.delete, color: Colors.red),
-                                    onPressed: () {
-                                      // TODO: Delete user
-                                    },
-                                  ),
-                                ],
+                                  onPressed: _deactivateDriver,
+                                ),
                               ),
-                            );
-                          },
-                        ),
+                            ],
+                          ),
+                        ],
                       ),
                     ),
                   ),
-        ),
-      ],
+                ),
+
+                const SizedBox(width: 16),
+
+                // Inactive drivers section
+                Expanded(
+                  child: Card(
+                    color: Color(0xFF8B3E3E),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16.0),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 16.0),
+                            child: Text(
+                              'Inactive EV Driver',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            child:
+                                _inactiveDrivers.isEmpty
+                                    ? Center(
+                                      child: Text(
+                                        'No inactive drivers',
+                                        style: TextStyle(color: Colors.white70),
+                                      ),
+                                    )
+                                    : ListView.builder(
+                                      itemCount: _inactiveDrivers.length,
+                                      itemBuilder: (context, index) {
+                                        final driver = _inactiveDrivers[index];
+                                        final lastUse =
+                                            driver['last_use'] != null
+                                                ? DateFormat(
+                                                  'MMMM d, y',
+                                                ).format(
+                                                  DateTime.parse(
+                                                    driver['last_use'],
+                                                  ),
+                                                )
+                                                : 'Unknown';
+
+                                        return Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            vertical: 4.0,
+                                          ),
+                                          child: Row(
+                                            mainAxisAlignment:
+                                                MainAxisAlignment.spaceBetween,
+                                            children: [
+                                              Text(
+                                                driver['ev_number'] ?? '',
+                                                style: TextStyle(
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                              Text(
+                                                lastUse,
+                                                style: TextStyle(
+                                                  color: Colors.white70,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _tableHeader(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12.0),
+      child: Text(text, style: TextStyle(fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Widget _tableCell(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 12.0),
+      child: Text(text),
     );
   }
 }
 
 // UsersContent widget that's used within the dashboard
 class UsersContent extends StatelessWidget {
+  const UsersContent({super.key});
+
   @override
   Widget build(BuildContext context) {
-    return const AdminHomeScreen();
+    return const UsersScreen();
   }
 }
