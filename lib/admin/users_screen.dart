@@ -29,19 +29,18 @@ class _UsersScreenState extends State<UsersScreen> {
 
   Future<void> _loadDrivers() async {
     try {
-      // Fetch active drivers
+      // Fetch active drivers (case-insensitive)
       final activeResponse = await Supabase.instance.client
-          .from('ev_drivers')
+          .from('users')
           .select()
-          .eq('status', 'Active')
+          .ilike('status', 'active')
           .order('name');
 
-      // Fetch inactive drivers
+      // Fetch inactive drivers (case-insensitive)
       final inactiveResponse = await Supabase.instance.client
-          .from('ev_drivers')
+          .from('users')
           .select()
-          .eq('status', 'Inactive')
-          .order('last_use', ascending: false);
+          .ilike('status', 'inactive');
 
       setState(() {
         _activeDrivers = List<Map<String, dynamic>>.from(activeResponse);
@@ -63,21 +62,21 @@ class _UsersScreenState extends State<UsersScreen> {
     }
 
     try {
-      // Find the driver with the given EV number
+      // Find active driver (case-insensitive)
       final driverResponse = await Supabase.instance.client
-          .from('ev_drivers')
+          .from('users')
           .select()
           .eq('ev_number', evNumber)
-          .eq('status', 'Active');
+          .ilike('status', 'active');
 
       if (driverResponse.isEmpty) {
         _showMessage('No active driver found with EV Number: $evNumber');
         return;
       }
 
-      // Update the driver status to inactive
+      // Deactivate driver
       await Supabase.instance.client
-          .from('ev_drivers')
+          .from('users')
           .update({
             'status': 'Inactive',
             'last_use': DateTime.now().toIso8601String(),
@@ -86,7 +85,7 @@ class _UsersScreenState extends State<UsersScreen> {
 
       _showMessage('Driver deactivated successfully');
       _evNumberController.clear();
-      _loadDrivers(); // Refresh the lists
+      _loadDrivers(); // Refresh lists
     } catch (e) {
       print('Error deactivating driver: $e');
       _showMessage('Error deactivating driver');
@@ -119,14 +118,14 @@ class _UsersScreenState extends State<UsersScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header with title and count
+          // Header
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 16.0),
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Row(
-                  children: [
+                  children: const [
                     Text(
                       'EV Drivers ',
                       style: TextStyle(
@@ -224,9 +223,9 @@ class _UsersScreenState extends State<UsersScreen> {
                                             ),
                                             child: TextButton(
                                               onPressed: () {
-                                                // Navigate to logs view or show logs dialog
+                                                // View logs action
                                               },
-                                              child: Text(
+                                              child: const Text(
                                                 'View Logs',
                                                 style: TextStyle(
                                                   color: Color(0xFF8B3E3E),
@@ -249,7 +248,7 @@ class _UsersScreenState extends State<UsersScreen> {
 
           const SizedBox(height: 16),
 
-          // Bottom section with deactivate and inactive drivers
+          // Bottom section (Deactivate + Inactive drivers)
           Expanded(
             flex: 2,
             child: Row(
@@ -266,8 +265,8 @@ class _UsersScreenState extends State<UsersScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 16.0),
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 16.0),
                             child: Text(
                               'Deactivate EV Driver',
                               style: TextStyle(
@@ -290,7 +289,7 @@ class _UsersScreenState extends State<UsersScreen> {
                                       borderRadius: BorderRadius.circular(30),
                                       borderSide: BorderSide.none,
                                     ),
-                                    contentPadding: EdgeInsets.symmetric(
+                                    contentPadding: const EdgeInsets.symmetric(
                                       horizontal: 16,
                                     ),
                                   ),
@@ -320,10 +319,10 @@ class _UsersScreenState extends State<UsersScreen> {
 
                 const SizedBox(width: 16),
 
-                // Inactive drivers section
+                // Inactive drivers
                 Expanded(
                   child: Card(
-                    color: Color(0xFF8B3E3E),
+                    color: const Color(0xFF8B3E3E),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(10),
                     ),
@@ -332,8 +331,8 @@ class _UsersScreenState extends State<UsersScreen> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 16.0),
+                          const Padding(
+                            padding: EdgeInsets.only(bottom: 16.0),
                             child: Text(
                               'Inactive EV Driver',
                               style: TextStyle(
@@ -346,7 +345,7 @@ class _UsersScreenState extends State<UsersScreen> {
                           Expanded(
                             child:
                                 _inactiveDrivers.isEmpty
-                                    ? Center(
+                                    ? const Center(
                                       child: Text(
                                         'No inactive drivers',
                                         style: TextStyle(color: Colors.white70),
@@ -377,13 +376,13 @@ class _UsersScreenState extends State<UsersScreen> {
                                             children: [
                                               Text(
                                                 driver['ev_number'] ?? '',
-                                                style: TextStyle(
+                                                style: const TextStyle(
                                                   color: Colors.white,
                                                 ),
                                               ),
                                               Text(
                                                 lastUse,
-                                                style: TextStyle(
+                                                style: const TextStyle(
                                                   color: Colors.white70,
                                                 ),
                                               ),
@@ -409,7 +408,7 @@ class _UsersScreenState extends State<UsersScreen> {
   Widget _tableHeader(String text) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 12.0),
-      child: Text(text, style: TextStyle(fontWeight: FontWeight.bold)),
+      child: Text(text, style: const TextStyle(fontWeight: FontWeight.bold)),
     );
   }
 
@@ -421,7 +420,6 @@ class _UsersScreenState extends State<UsersScreen> {
   }
 }
 
-// UsersContent widget that's used within the dashboard
 class UsersContent extends StatelessWidget {
   const UsersContent({super.key});
 
