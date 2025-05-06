@@ -3,6 +3,9 @@ import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:intl/intl.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../users/login_screen.dart';
+import '../admin/users_screen.dart';
+import '../admin/billboards_screen.dart';
+import '../admin/logs_screen.dart';
 
 class AdminDashboardScreen extends StatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -20,6 +23,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   int activeUsers = 0;
   int alertsToday = 0;
   bool _isLoading = true;
+
+  // Current active screen index
+  int _currentScreenIndex = 0;
 
   @override
   void initState() {
@@ -171,12 +177,118 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
+  void _switchScreen(int index) {
+    setState(() {
+      _currentScreenIndex = index;
+    });
+  }
+
+  // Dashboard content
+  Widget _buildDashboardContent() {
     final String formattedDate = DateFormat(
       'EEEE, MMMM d y',
     ).format(DateTime.now());
 
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 20.0, horizontal: 30.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Welcome Back $userName!',
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                formattedDate,
+                style: const TextStyle(fontSize: 14, color: Colors.grey),
+              ),
+            ],
+          ),
+          const SizedBox(height: 20),
+
+          // Debug info
+          Text(
+            'Total markers: ${_markers.length}',
+            style: TextStyle(color: Colors.grey),
+          ),
+          const SizedBox(height: 10),
+
+          // Google Map
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: GoogleMap(
+                onMapCreated: (controller) {
+                  mapController = controller;
+                },
+                initialCameraPosition: const CameraPosition(
+                  target: LatLng(8.9526, 125.5298), // Butuan City, Philippines
+                  zoom: 14,
+                ),
+                markers: _markers,
+                myLocationEnabled: false,
+                zoomControlsEnabled: true,
+                mapToolbarEnabled: true,
+              ),
+            ),
+          ),
+
+          const SizedBox(height: 20),
+
+          // Statistics
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              buildStatCard(
+                Icons.location_city,
+                "Total Active Billboards",
+                totalBillboards,
+                Colors.brown,
+              ),
+              buildStatCard(
+                Icons.people,
+                "Active Users",
+                activeUsers,
+                Colors.black87,
+              ),
+              buildStatCard(
+                Icons.warning_amber,
+                "Alerts Triggered Today",
+                alertsToday,
+                Colors.redAccent,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // Function to get the correct content based on index
+  Widget _getContentForIndex() {
+    switch (_currentScreenIndex) {
+      case 0:
+        return _buildDashboardContent();
+      case 1:
+        return UsersContent();
+      case 2:
+        return BillboardsContent();
+      case 3:
+        return LogsContent();
+      default:
+        return _buildDashboardContent();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     if (_isLoading) {
       return const Scaffold(
         body: Center(
@@ -188,7 +300,7 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     return Scaffold(
       body: Row(
         children: [
-          // Sidebar
+          // Sidebar - This stays constant
           Container(
             width: 220,
             color: const Color(0xFF8B3E3E),
@@ -213,10 +325,38 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       ),
                     ),
                     const SizedBox(height: 30),
-                    buildNavItem(Icons.dashboard, "Dashboard", true),
-                    buildNavItem(Icons.group, "Users", false),
-                    buildNavItem(Icons.location_on, "Billboard", false),
-                    buildNavItem(Icons.receipt_long, "Logs", false),
+                    buildNavItem(
+                      Icons.dashboard,
+                      "Dashboard",
+                      _currentScreenIndex == 0,
+                      () {
+                        _switchScreen(0);
+                      },
+                    ),
+                    buildNavItem(
+                      Icons.group,
+                      "Users",
+                      _currentScreenIndex == 1,
+                      () {
+                        _switchScreen(1);
+                      },
+                    ),
+                    buildNavItem(
+                      Icons.location_on,
+                      "Billboard",
+                      _currentScreenIndex == 2,
+                      () {
+                        _switchScreen(2);
+                      },
+                    ),
+                    buildNavItem(
+                      Icons.receipt_long,
+                      "Logs",
+                      _currentScreenIndex == 3,
+                      () {
+                        _switchScreen(3);
+                      },
+                    ),
                   ],
                 ),
                 Column(
@@ -252,113 +392,26 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             ),
           ),
 
-          // Main Content
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                vertical: 20.0,
-                horizontal: 30.0,
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Header
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Welcome Back $userName!',
-                        style: const TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        formattedDate,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Colors.grey,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-
-                  // Debug info
-                  Text(
-                    'Total markers: ${_markers.length}',
-                    style: TextStyle(color: Colors.grey),
-                  ),
-                  const SizedBox(height: 10),
-
-                  // Google Map
-                  Expanded(
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: GoogleMap(
-                        onMapCreated: (controller) {
-                          mapController = controller;
-                        },
-                        initialCameraPosition: const CameraPosition(
-                          target: LatLng(
-                            8.9526,
-                            125.5298,
-                          ), // Butuan City, Philippines
-                          zoom: 14,
-                        ),
-                        markers: _markers,
-                        myLocationEnabled: false,
-                        zoomControlsEnabled: true,
-                        mapToolbarEnabled: true,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // Statistics
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      buildStatCard(
-                        Icons.location_city,
-                        "Total Active Billboards",
-                        totalBillboards,
-                        Colors.brown,
-                      ),
-                      buildStatCard(
-                        Icons.people,
-                        "Active Users",
-                        activeUsers,
-                        Colors.black87,
-                      ),
-                      buildStatCard(
-                        Icons.warning_amber,
-                        "Alerts Triggered Today",
-                        alertsToday,
-                        Colors.redAccent,
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
+          // Main Content - This changes based on navigation
+          Expanded(child: _getContentForIndex()),
         ],
       ),
     );
   }
 
-  Widget buildNavItem(IconData icon, String label, bool active) {
+  Widget buildNavItem(
+    IconData icon,
+    String label,
+    bool active,
+    VoidCallback onTap,
+  ) {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 8),
       color: active ? Colors.white.withOpacity(0.2) : Colors.transparent,
       child: ListTile(
         leading: Icon(icon, color: Colors.white),
         title: Text(label, style: const TextStyle(color: Colors.white)),
-        onTap: () {
-          // Handle navigation logic
-        },
+        onTap: onTap,
       ),
     );
   }
@@ -388,6 +441,75 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
             Text(label, style: const TextStyle(color: Colors.white)),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// Placeholder Widgets for content sections - You'll implement these in separate files
+class UsersContent extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Users Management',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 20),
+          Expanded(
+            child: Center(child: Text('User management content will go here')),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class BillboardsContent extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Billboard Management',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 20),
+          Expanded(
+            child: Center(
+              child: Text('Billboard management content will go here'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class LogsContent extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(20.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'System Logs',
+            style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          SizedBox(height: 20),
+          Expanded(
+            child: Center(child: Text('System logs content will go here')),
+          ),
+        ],
       ),
     );
   }
