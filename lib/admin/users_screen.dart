@@ -66,7 +66,7 @@ class _UsersScreenState extends State<UsersScreen> {
       final driverResponse = await Supabase.instance.client
           .from('users')
           .select()
-          .eq('ev_number', evNumber)
+          .eq('ev_registration_no', evNumber)
           .ilike('status', 'active');
 
       if (driverResponse.isEmpty) {
@@ -81,7 +81,7 @@ class _UsersScreenState extends State<UsersScreen> {
             'status': 'Inactive',
             'last_use': DateTime.now().toIso8601String(),
           })
-          .eq('ev_number', evNumber);
+          .eq('ev_registration_no', evNumber);
 
       _showMessage('Driver deactivated successfully');
       _evNumberController.clear();
@@ -214,7 +214,9 @@ class _UsersScreenState extends State<UsersScreen> {
                                         children: [
                                           _tableCell(driver['name'] ?? ''),
                                           _tableCell(driver['role'] ?? ''),
-                                          _tableCell(driver['ev_number'] ?? ''),
+                                          _tableCell(
+                                            driver['ev_registration_no'] ?? '',
+                                          ),
                                           _tableCell(driver['email'] ?? ''),
                                           _tableCell(driver['status'] ?? ''),
                                           Padding(
