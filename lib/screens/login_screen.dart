@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'home_screen.dart';
+import 'signup_screen.dart';
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -38,20 +39,25 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
+      print('Attempting to login with: ${_emailController.text.trim()}');
+
       final response = await Supabase.instance.client.auth.signInWithPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
 
       if (response.session != null) {
+        print('Login successful for user: ${response.user?.id}');
         Navigator.pushReplacement(
           context,
           MaterialPageRoute(builder: (context) => HomeScreen()),
         );
       } else {
+        print('Login failed: No session returned');
         _showMessage('Login failed. Please check your credentials.');
       }
     } catch (e) {
+      print('Login error details: ${e.toString()}');
       _showMessage('Login error: ${e.toString()}');
     } finally {
       setState(() => _isLoading = false);
@@ -221,6 +227,9 @@ class _LoginScreenState extends State<LoginScreen> {
                           child: TextButton(
                             onPressed: () {
                               // TODO: Implement password reset
+                              _showMessage(
+                                'Password reset functionality will be implemented soon.',
+                              );
                             },
                             style: TextButton.styleFrom(
                               foregroundColor: Colors.red[600],
@@ -276,7 +285,12 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     TextButton(
                       onPressed: () {
-                        // TODO: Implement sign up navigation
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => SignupScreen(),
+                          ),
+                        );
                       },
                       style: TextButton.styleFrom(
                         foregroundColor: Colors.red[600],
