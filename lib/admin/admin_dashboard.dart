@@ -13,29 +13,12 @@ class AdminDashboardScreen extends StatefulWidget {
 
 class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   late GoogleMapController mapController;
-
-  final List<Marker> _markers = [
-    Marker(
-      markerId: MarkerId('1'),
-      position: LatLng(8.9526, 125.5298),
-      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-    ),
-    Marker(
-      markerId: MarkerId('2'),
-      position: LatLng(8.9550, 125.5300),
-      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-    ),
-    Marker(
-      markerId: MarkerId('3'),
-      position: LatLng(8.9570, 125.5320),
-      icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueRed),
-    ),
-  ];
+  Set<Marker> _markers = {};
 
   String userName = "Admin";
-  int totalBillboards = 7;
-  int activeUsers = 11;
-  int alertsToday = 3;
+  int totalBillboards = 0;
+  int activeUsers = 0;
+  int alertsToday = 0;
   bool _isLoading = true;
 
   @override
@@ -70,43 +53,96 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       final user = Supabase.instance.client.auth.currentUser;
       if (user == null) return;
 
-      // Use email prefix as fallback name
       userName = user.email?.split('@').first ?? 'Admin';
 
-      // Get statistics
+      // Fetch active billboards and markers
       final billboardResponse = await Supabase.instance.client
           .from('billboards')
-          .select('*', const FetchOptions(count: CountOption.exact))
-          .eq('active', true);
+          .select('*');
 
-      final billboardCount = billboardResponse.count ?? 0;
+      // Make sure we properly handle the response as a List
+      if (billboardResponse is List) {
+        final billboards = billboardResponse;
 
-      final userResponse = await Supabase.instance.client
-          .from('profiles')
-          .select('*', const FetchOptions(count: CountOption.exact))
-          .gt(
-            'last_sign_in',
-            DateTime.now().subtract(Duration(days: 7)).toIso8601String(),
-          );
+        print('Fetched ${billboards.length} billboards from database');
 
-      final userCount = userResponse.count ?? 0;
+        // Count active billboards
+        totalBillboards = billboards.where((b) => b['active'] == true).length;
 
-      final alertResponse = await Supabase.instance.client
-          .from('emergency_alerts')
-          .select('*', const FetchOptions(count: CountOption.exact))
-          .gte('created_at', DateTime.now().toIso8601String().split('T')[0]);
+        // Clear existing markers and create new ones
+        _markers.clear();
 
-      final todayAlerts = alertResponse.count ?? 0;
+        for (var billboard in billboards) {
+          if (billboard['latitude'] != null && billboard['longitude'] != null) {
+            try {
+              final double lat = double.parse(billboard['latitude'].toString());
+              final double lng = double.parse(
+                billboard['longitude'].toString(),
+              );
+
+              final marker = Marker(
+                markerId: MarkerId(billboard['id'].toString()),
+                position: LatLng(lat, lng),
+                icon: BitmapDescriptor.defaultMarkerWithHue(
+                  billboard['active'] == true
+                      ? BitmapDescriptor.hueGreen
+                      : BitmapDescriptor.hueRed,
+                ),
+                infoWindow: InfoWindow(
+                  title: billboard['name'] ?? 'Billboard ${billboard['id']}',
+                  snippet: billboard['active'] == true ? 'Active' : 'Inactive',
+                ),
+              );
+
+              _markers.add(marker);
+              print('Added marker at: $lat, $lng');
+            } catch (e) {
+              print(
+                'Error creating marker for billboard ${billboard['id']}: $e',
+              );
+            }
+          } else {
+            print('Invalid coordinates for billboard ${billboard['id']}');
+          }
+        }
+      } else {
+        print('Invalid response format from billboards table');
+      }
+
+      // Active users in last 7 days
+      try {
+        final userResponse = await Supabase.instance.client
+            .from('profiles')
+            .select('*', const FetchOptions(count: CountOption.exact))
+            .gt(
+              'last_sign_in',
+              DateTime.now().subtract(Duration(days: 7)).toIso8601String(),
+            );
+        activeUsers = userResponse.count ?? 0;
+      } catch (e) {
+        print('Error fetching profiles: $e');
+        activeUsers = 0; // Default if table doesn't exist
+      }
+
+      // Alerts triggered today
+      try {
+        final alertResponse = await Supabase.instance.client
+            .from('emergency_alerts')
+            .select('*', const FetchOptions(count: CountOption.exact))
+            .gte('created_at', DateTime.now().toIso8601String().split('T')[0]);
+        alertsToday = alertResponse.count ?? 0;
+      } catch (e) {
+        print('Error fetching emergency_alerts: $e');
+        alertsToday = 0; // Default if table doesn't exist
+      }
 
       setState(() {
-        totalBillboards = billboardCount;
-        activeUsers = userCount;
-        alertsToday = todayAlerts;
         _isLoading = false;
       });
     } catch (e) {
       print('Error loading admin data: $e');
       setState(() => _isLoading = false);
+      _showMessage('Error loading data: ${e.toString().substring(0, 100)}');
     }
   }
 
@@ -123,6 +159,8 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
   }
 
   void _showMessage(String message) {
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
@@ -140,9 +178,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     ).format(DateTime.now());
 
     if (_isLoading) {
-      return Scaffold(
+      return const Scaffold(
         body: Center(
-          child: CircularProgressIndicator(color: const Color(0xFF8B3E3E)),
+          child: CircularProgressIndicator(color: Color(0xFF8B3E3E)),
         ),
       );
     }
@@ -161,12 +199,9 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   children: [
                     const SizedBox(height: 40),
                     const CircleAvatar(
-                      backgroundImage: AssetImage(
-                        'icon.jpg',
-                      ), // Replace with your app logo
+                      backgroundImage: AssetImage('icon.jpg'),
                       radius: 30,
-                      backgroundColor:
-                          Colors.white, // Fallback if image isn't loaded
+                      backgroundColor: Colors.white,
                     ),
                     const SizedBox(height: 10),
                     const Text(
@@ -191,14 +226,21 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                       leading: const CircleAvatar(child: Icon(Icons.person)),
                       title: Text(
                         userName,
-                        style: TextStyle(color: Colors.white, fontSize: 12),
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                        ),
                       ),
                       subtitle: const Text(
                         "Admin",
                         style: TextStyle(color: Colors.white70, fontSize: 10),
                       ),
                       trailing: IconButton(
-                        icon: Icon(Icons.logout, color: Colors.white, size: 18),
+                        icon: const Icon(
+                          Icons.logout,
+                          color: Colors.white,
+                          size: 18,
+                        ),
                         onPressed: _signOut,
                         tooltip: "Logout",
                       ),
@@ -242,6 +284,13 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                   ),
                   const SizedBox(height: 20),
 
+                  // Debug info
+                  Text(
+                    'Total markers: ${_markers.length}',
+                    style: TextStyle(color: Colors.grey),
+                  ),
+                  const SizedBox(height: 10),
+
                   // Google Map
                   Expanded(
                     child: ClipRRect(
@@ -251,12 +300,16 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
                           mapController = controller;
                         },
                         initialCameraPosition: const CameraPosition(
-                          target: LatLng(8.9526, 125.5298),
+                          target: LatLng(
+                            8.9526,
+                            125.5298,
+                          ), // Butuan City, Philippines
                           zoom: 14,
                         ),
-                        markers: Set<Marker>.of(_markers),
+                        markers: _markers,
                         myLocationEnabled: false,
-                        zoomControlsEnabled: false,
+                        zoomControlsEnabled: true,
+                        mapToolbarEnabled: true,
                       ),
                     ),
                   ),
