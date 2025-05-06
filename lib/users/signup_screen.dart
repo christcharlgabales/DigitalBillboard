@@ -14,6 +14,8 @@ class _SignupScreenState extends State<SignupScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _evRegistrationController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool _passwordVisible = false;
@@ -24,6 +26,8 @@ class _SignupScreenState extends State<SignupScreen> {
     _emailController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _nameController.dispose();
+    _evRegistrationController.dispose();
     super.dispose();
   }
 
@@ -44,16 +48,33 @@ class _SignupScreenState extends State<SignupScreen> {
     setState(() => _isLoading = true);
 
     try {
+      final email = _emailController.text.trim();
+      final password = _passwordController.text.trim();
+      final name = _nameController.text.trim();
+      final evRegistrationNo = _evRegistrationController.text.trim();
+
       final response = await Supabase.instance.client.auth.signUp(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-        emailRedirectTo: null, // Optional: provide redirect URL here
-        data: {'email': _emailController.text.trim()}, // Optional user metadata
+        email: email,
+        password: password,
       );
 
-      if (response.user != null) {
+      final user = response.user;
+
+      if (user != null) {
+        // Insert into users table
+        final insertResponse = await Supabase.instance.client
+            .from('users')
+            .insert({
+              'id': user.id,
+              'email': email,
+              'password': password, // Ideally hash it or store a placeholder
+              'name': name,
+              'ev_registration_no': evRegistrationNo,
+              'status': 'active',
+            });
+
         _showMessage(
-          'Account created! Please check your email to verify your account.',
+          'Account created! Please verify your email.',
           color: Colors.green[400],
         );
 
@@ -158,6 +179,48 @@ class _SignupScreenState extends State<SignupScreen> {
                           ),
                         ),
                         const SizedBox(height: 24),
+
+                        // Name Field
+                        TextFormField(
+                          controller: _nameController,
+                          keyboardType: TextInputType.name,
+                          decoration: InputDecoration(
+                            labelText: 'Full Name',
+                            prefixIcon: Icon(Icons.person_outline),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter your name';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
+
+                        // EV Registration Number Field
+                        TextFormField(
+                          controller: _evRegistrationController,
+                          keyboardType: TextInputType.text,
+                          decoration: InputDecoration(
+                            labelText: 'Emergency Vehicle Registration Number',
+                            prefixIcon: Icon(
+                              Icons.confirmation_number_outlined,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
+                          ),
+                          validator: (value) {
+                            if (value == null || value.isEmpty) {
+                              return 'Please enter your EV registration number';
+                            }
+                            return null;
+                          },
+                        ),
+                        const SizedBox(height: 16),
 
                         // Email Field
                         TextFormField(

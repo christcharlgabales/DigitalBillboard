@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'home_screen.dart';
 import 'signup_screen.dart';
+import '../admin/admin_dashboard.dart'; // Import for your admin dashboard
 
 class LoginScreen extends StatefulWidget {
   @override
@@ -14,6 +15,7 @@ class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool _passwordVisible = false;
+  bool _isAdminLogin = false; // New field to track admin login mode
 
   @override
   void dispose() {
@@ -22,12 +24,12 @@ class _LoginScreenState extends State<LoginScreen> {
     super.dispose();
   }
 
-  void _showMessage(String message) {
+  void _showMessage(String message, {bool isError = true}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
         behavior: SnackBarBehavior.floating,
-        backgroundColor: Colors.red[400],
+        backgroundColor: isError ? Colors.red[400] : Colors.green[400],
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
       ),
     );
@@ -39,26 +41,36 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      print('Attempting to login with: ${_emailController.text.trim()}');
-
       final response = await Supabase.instance.client.auth.signInWithPassword(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
 
-      if (response.session != null) {
-        print('Login successful for user: ${response.user?.id}');
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(builder: (context) => HomeScreen()),
-        );
+      final user = response.user;
+      if (user != null) {
+        final role = user.appMetadata['role'];
+        print('User logged in with role: $role');
+
+        if (role == 'admin') {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => AdminDashboardScreen()),
+          );
+        } else {
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (context) => HomeScreen()),
+          );
+        }
       } else {
-        print('Login failed: No session returned');
         _showMessage('Login failed. Please check your credentials.');
       }
+    } on AuthException catch (e) {
+      print('Auth error: ${e.message}');
+      _showMessage('Authentication error: ${e.message}');
     } catch (e) {
-      print('Login error details: ${e.toString()}');
-      _showMessage('Login error: ${e.toString()}');
+      print('Unexpected login error: $e');
+      _showMessage('Unexpected error: $e');
     } finally {
       setState(() => _isLoading = false);
     }
@@ -99,7 +111,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       Icon(
                         Icons.emergency_outlined,
                         size: 80,
-                        color: Colors.red[700],
+                        color:
+                            _isAdminLogin ? Colors.blue[700] : Colors.red[700],
                       ),
                       const SizedBox(height: 16),
                       Text(
@@ -107,13 +120,18 @@ class _LoginScreenState extends State<LoginScreen> {
                         style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,
-                          color: Colors.red[800],
+                          color:
+                              _isAdminLogin
+                                  ? Colors.blue[800]
+                                  : Colors.red[800],
                           letterSpacing: 1.2,
                         ),
                       ),
                       const SizedBox(height: 8),
                       Text(
-                        'Emergency Vehicle Alert System',
+                        _isAdminLogin
+                            ? 'Administrator Portal'
+                            : 'Emergency Vehicle Alert System',
                         style: TextStyle(fontSize: 16, color: Colors.grey[600]),
                       ),
                     ],
@@ -140,13 +158,49 @@ class _LoginScreenState extends State<LoginScreen> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        Text(
-                          'Login to Your Account',
-                          style: TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.grey[800],
-                          ),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              _isAdminLogin
+                                  ? 'Admin Login'
+                                  : 'Login to Your Account',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.grey[800],
+                              ),
+                            ),
+                            // Switch between admin and user login
+                            TextButton.icon(
+                              onPressed: () {
+                                setState(() {
+                                  _isAdminLogin = !_isAdminLogin;
+                                  // Clear fields when switching modes
+                                  _emailController.clear();
+                                  _passwordController.clear();
+                                });
+                              },
+                              icon: Icon(
+                                _isAdminLogin
+                                    ? Icons.person_outline
+                                    : Icons.admin_panel_settings_outlined,
+                                color:
+                                    _isAdminLogin
+                                        ? Colors.blue[600]
+                                        : Colors.red[600],
+                              ),
+                              label: Text(
+                                _isAdminLogin ? 'User Login' : 'Admin Login',
+                                style: TextStyle(
+                                  color:
+                                      _isAdminLogin
+                                          ? Colors.blue[600]
+                                          : Colors.red[600],
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                         const SizedBox(height: 24),
 
@@ -163,7 +217,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(color: Colors.red[400]!),
+                              borderSide: BorderSide(
+                                color:
+                                    _isAdminLogin
+                                        ? Colors.blue[400]!
+                                        : Colors.red[400]!,
+                              ),
                             ),
                           ),
                           validator: (value) {
@@ -206,7 +265,12 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(10),
-                              borderSide: BorderSide(color: Colors.red[400]!),
+                              borderSide: BorderSide(
+                                color:
+                                    _isAdminLogin
+                                        ? Colors.blue[400]!
+                                        : Colors.red[400]!,
+                              ),
                             ),
                           ),
                           validator: (value) {
@@ -221,20 +285,23 @@ class _LoginScreenState extends State<LoginScreen> {
                         ),
                         const SizedBox(height: 8),
 
-                        // Forgot Password
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton(
-                            onPressed: () {
-                              // TODO: Implement password reset
-                              _showMessage(
-                                'Password reset functionality will be implemented soon.',
-                              );
-                            },
-                            style: TextButton.styleFrom(
-                              foregroundColor: Colors.red[600],
+                        // Forgot Password (only visible for regular users)
+                        Visibility(
+                          visible: !_isAdminLogin,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: () {
+                                // TODO: Implement password reset
+                                _showMessage(
+                                  'Password reset functionality will be implemented soon.',
+                                );
+                              },
+                              style: TextButton.styleFrom(
+                                foregroundColor: Colors.red[600],
+                              ),
+                              child: Text('Forgot Password?'),
                             ),
-                            child: Text('Forgot Password?'),
                           ),
                         ),
                         const SizedBox(height: 24),
@@ -243,7 +310,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         ElevatedButton(
                           onPressed: _isLoading ? null : _login,
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red[700],
+                            backgroundColor:
+                                _isAdminLogin
+                                    ? Colors.blue[700]
+                                    : Colors.red[700],
                             padding: const EdgeInsets.symmetric(vertical: 16),
                             shape: RoundedRectangleBorder(
                               borderRadius: BorderRadius.circular(10),
@@ -261,7 +331,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     ),
                                   )
                                   : Text(
-                                    'LOGIN',
+                                    _isAdminLogin ? 'ADMIN LOGIN' : 'LOGIN',
                                     style: TextStyle(
                                       fontSize: 16,
                                       fontWeight: FontWeight.bold,
@@ -275,32 +345,35 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 24),
 
-                // Sign Up Option
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "Don't have an account?",
-                      style: TextStyle(color: Colors.grey[600]),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => SignupScreen(),
-                          ),
-                        );
-                      },
-                      style: TextButton.styleFrom(
-                        foregroundColor: Colors.red[600],
+                // Sign Up Option (only visible for regular users)
+                Visibility(
+                  visible: !_isAdminLogin,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "Don't have an account?",
+                        style: TextStyle(color: Colors.grey[600]),
                       ),
-                      child: Text(
-                        'Sign Up',
-                        style: TextStyle(fontWeight: FontWeight.bold),
+                      TextButton(
+                        onPressed: () {
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => SignupScreen(),
+                            ),
+                          );
+                        },
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.red[600],
+                        ),
+                        child: Text(
+                          'Sign Up',
+                          style: TextStyle(fontWeight: FontWeight.bold),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),
