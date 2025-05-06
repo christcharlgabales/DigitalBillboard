@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'dart:html' as html; // For loading the Google Maps script dynamically
-
-import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
+import './admin/admin_dashboard.dart';
+import 'users/login_screen.dart';
+import 'users/home_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,13 +45,29 @@ void _loadGoogleMapsScript(String apiKey) {
 class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final session = Supabase.instance.client.auth.currentSession;
+
+    if (session == null) {
+      return MaterialApp(
+        title: 'Digital Billboard',
+        theme: ThemeData(primarySwatch: Colors.blue),
+        home: LoginScreen(),
+      );
+    }
+
+    final role = session.user?.appMetadata['role']; // <-- FIX HERE
+
+    Widget home;
+    if (role == 'admin') {
+      home = AdminDashboardScreen();
+    } else {
+      home = HomeScreen();
+    }
+
     return MaterialApp(
       title: 'Digital Billboard',
       theme: ThemeData(primarySwatch: Colors.blue),
-      home:
-          Supabase.instance.client.auth.currentSession == null
-              ? LoginScreen()
-              : HomeScreen(),
+      home: home,
     );
   }
 }
