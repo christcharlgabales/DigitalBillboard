@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'view_locations_screen.dart';
 import 'login_screen.dart';
 import 'billboard_tracking_screen.dart'; // ✅ Added
+import 'package:digital_billboard/users/billboard_tracking_screen.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
@@ -179,7 +180,7 @@ class HomeScreen extends StatelessWidget {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (context) => BillboardTrackingScreen(),
+                        builder: (context) => WebBillboardDashboard(),
                       ),
                     );
                   },
