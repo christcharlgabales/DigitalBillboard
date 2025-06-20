@@ -1,4 +1,3 @@
-// billboard_screen.dart
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
@@ -20,6 +19,7 @@ class _BillboardsScreenState extends State<BillboardsScreen> {
 
   final TextEditingController _latController = TextEditingController();
   final TextEditingController _lngController = TextEditingController();
+  String userName = "Admin";
 
   final Color maroonColor = const Color(0xFF8B3E3E);
 
@@ -171,8 +171,8 @@ class _BillboardsScreenState extends State<BillboardsScreen> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const Text(
-                  'Welcome Back Christ!',
+                Text(
+                  'Welcome back $userName!',
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 Text(

@@ -149,10 +149,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       // Active users in last 7 days
       try {
         final userResponse = await Supabase.instance.client
-            .from('profiles')
+            .from('users')
             .select('*', const FetchOptions(count: CountOption.exact))
-            .gt(
-              'last_sign_in',
+            .gte(
+              'created_at',
               DateTime.now().subtract(Duration(days: 7)).toIso8601String(),
             );
         activeUsers = userResponse.count ?? 0;

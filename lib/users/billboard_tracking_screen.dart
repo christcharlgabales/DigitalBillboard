@@ -556,6 +556,8 @@ class _WebBillboardDashboardState extends State<WebBillboardDashboard>
     );
   }
 
+  // USER SIDE CODE - Put this in your user map/dashboard
+
   Future<void> _manuallyActivateBillboard(
     Map<String, dynamic> billboard,
   ) async {
@@ -568,16 +570,15 @@ class _WebBillboardDashboardState extends State<WebBillboardDashboard>
     final String billboardId = billboard['id'];
 
     try {
-      // Check if alert already exists for this billboard (regardless of user)
-      // Since we don't have user_id, we'll check for any active alert on this billboard
+      // Check if alert already exists for this billboard
       final existing = await Supabase.instance.client
           .from('alerts')
           .select()
           .eq('billboard_id', billboardId)
-          .eq('type_of_activation', 'manual'); // Filter by manual activations
+          .eq('type_of_activation', 'manual');
 
       if (existing.isNotEmpty) {
-        // Clear existing alert
+        // Clear existing alert (DEACTIVATE)
         await Supabase.instance.client
             .from('alerts')
             .delete()
@@ -588,12 +589,13 @@ class _WebBillboardDashboardState extends State<WebBillboardDashboard>
           triggerStatus[billboardId] = false;
         });
 
+        print('🔴 Billboard ${billboard['name']} deactivated');
         _showAlertNotification(
           'Alert cleared for ${billboard['name']}!',
           isSuccess: true,
         );
       } else {
-        // Create new alert
+        // Create new alert (ACTIVATE)
         await Supabase.instance.client.from('alerts').insert({
           'billboard_id': billboardId,
           'triggered_at': DateTime.now().toUtc().toIso8601String(),
@@ -606,18 +608,44 @@ class _WebBillboardDashboardState extends State<WebBillboardDashboard>
           triggerStatus[billboardId] = true;
         });
 
+        print('🟢 Billboard ${billboard['name']} activated');
         _showAlertNotification(
           'Alert manually activated for ${billboard['name']}!',
           isSuccess: true,
         );
       }
 
-      updateMap();
+      updateMap(); // Update your user map markers
     } catch (e) {
+      print('❌ Error in manual activation: $e');
       _showAlertNotification(
         'Failed to activate billboard: $e',
         isSuccess: false,
       );
+    }
+  }
+
+  // Helper method to check if billboard is active (for UI display)
+  bool _isBillboardActive(String billboardId) {
+    return triggerStatus[billboardId] ?? false;
+  }
+
+  // Method to load billboard status on app start
+  Future<void> _loadBillboardStatus() async {
+    try {
+      final alerts = await Supabase.instance.client
+          .from('alerts')
+          .select('billboard_id')
+          .eq('type_of_activation', 'manual');
+
+      setState(() {
+        triggerStatus.clear();
+        for (var alert in alerts) {
+          triggerStatus[alert['billboard_id']] = true;
+        }
+      });
+    } catch (e) {
+      print('Error loading billboard status: $e');
     }
   }
 
