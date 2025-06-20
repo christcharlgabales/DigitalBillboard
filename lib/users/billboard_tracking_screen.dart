@@ -566,22 +566,23 @@ class _WebBillboardDashboardState extends State<WebBillboardDashboard>
     }
 
     final String billboardId = billboard['id'];
-    final String userId = currentUser.id;
 
     try {
-      // Check if alert already exists
+      // Check if alert already exists for this billboard (regardless of user)
+      // Since we don't have user_id, we'll check for any active alert on this billboard
       final existing = await Supabase.instance.client
           .from('alerts')
           .select()
-          .eq('user_id', userId)
-          .eq('billboard_id', billboardId);
+          .eq('billboard_id', billboardId)
+          .eq('type_of_activation', 'manual'); // Filter by manual activations
 
       if (existing.isNotEmpty) {
         // Clear existing alert
-        await Supabase.instance.client.from('alerts').delete().match({
-          'user_id': userId,
-          'billboard_id': billboardId,
-        });
+        await Supabase.instance.client
+            .from('alerts')
+            .delete()
+            .eq('billboard_id', billboardId)
+            .eq('type_of_activation', 'manual');
 
         setState(() {
           triggerStatus[billboardId] = false;
@@ -594,9 +595,11 @@ class _WebBillboardDashboardState extends State<WebBillboardDashboard>
       } else {
         // Create new alert
         await Supabase.instance.client.from('alerts').insert({
-          'user_id': userId,
           'billboard_id': billboardId,
           'triggered_at': DateTime.now().toUtc().toIso8601String(),
+          'type_of_activation': 'manual',
+          'result': 'activated',
+          // ev_registration_no will be null for manual activations
         });
 
         setState(() {
