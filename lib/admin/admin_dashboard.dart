@@ -32,6 +32,37 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
     super.initState();
     _checkAdminAuth();
     _loadAdminData();
+
+    // Subscribe to new alerts (e.g., a billboard was activated)
+    Supabase.instance.client
+        .channel('public:alerts')
+        .on(
+          RealtimeListenTypes.postgresChanges,
+          ChannelFilter(event: 'INSERT', schema: 'public', table: 'alerts'),
+          (payload, [ref]) {
+            print('New alert inserted: ${payload['new']}');
+            _loadAdminData(); // Reload dashboard stats and markers
+          },
+        )
+        .on(
+          RealtimeListenTypes.postgresChanges,
+          ChannelFilter(event: 'DELETE', schema: 'public', table: 'alerts'),
+          (payload, [ref]) {
+            print('Alert deleted: ${payload['old']}');
+            _loadAdminData(); // Reload again on removal
+          },
+        )
+        .subscribe();
+
+    // (Optional) Listen for billboard activation changes (status toggled)
+    Supabase.instance.client.channel('public:billboards').on(
+      RealtimeListenTypes.postgresChanges,
+      ChannelFilter(event: 'UPDATE', schema: 'public', table: 'billboards'),
+      (payload, [ref]) {
+        print('Billboard updated: ${payload['new']}');
+        _loadAdminData(); // Update active billboard count and marker icon
+      },
+    ).subscribe();
   }
 
   Future<void> _checkAdminAuth() async {
@@ -118,10 +149,10 @@ class _AdminDashboardScreenState extends State<AdminDashboardScreen> {
       // Active users in last 7 days
       try {
         final userResponse = await Supabase.instance.client
-            .from('profiles')
+            .from('users')
             .select('*', const FetchOptions(count: CountOption.exact))
-            .gt(
-              'last_sign_in',
+            .gte(
+              'created_at',
               DateTime.now().subtract(Duration(days: 7)).toIso8601String(),
             );
         activeUsers = userResponse.count ?? 0;

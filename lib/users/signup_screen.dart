@@ -71,6 +71,7 @@ class _SignupScreenState extends State<SignupScreen> {
               'name': name,
               'ev_registration_no': evRegistrationNo,
               'status': 'active',
+              'role': 'user',
             });
 
         _showMessage(

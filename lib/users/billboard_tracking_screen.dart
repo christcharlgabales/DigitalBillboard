@@ -1,19 +1,20 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 
-class BillboardTrackingScreen extends StatefulWidget {
-  const BillboardTrackingScreen({super.key});
+class WebBillboardDashboard extends StatefulWidget {
+  const WebBillboardDashboard({super.key});
 
   @override
-  State<BillboardTrackingScreen> createState() =>
-      _BillboardTrackingScreenState();
+  State<WebBillboardDashboard> createState() => _WebBillboardDashboardState();
 }
 
-class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
+class _WebBillboardDashboardState extends State<WebBillboardDashboard>
+    with TickerProviderStateMixin {
   List<Map<String, dynamic>> billboards = [];
   Map<String, dynamic>? selectedBillboard;
   LatLng? currentPosition;
@@ -27,16 +28,46 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
 
   GoogleMapController? _mapController;
   bool _mapInitialized = false;
+  bool _isGlobalTracking = false;
 
   final Set<Circle> _circles = {};
   final Set<Marker> _markers = {};
 
+  // Slider animation controller
+  late AnimationController _sliderController;
+  late Animation<double> _sliderAnimation;
+  bool _isSliderActive = false;
+
+  // Selected billboard for activation
+  Map<String, dynamic>? _activationBillboard;
+
   @override
   void initState() {
     super.initState();
+    _sliderController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+    _sliderAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _sliderController, curve: Curves.easeInOut),
+    );
+
     insertDefaultBillboard();
     fetchBillboards();
     _requestLocationPermission();
+  }
+
+  @override
+  void dispose() {
+    _sliderController.dispose();
+    for (final stream in positionStreams.values) {
+      stream.cancel();
+    }
+    positionStreams.clear();
+    if (_mapInitialized && _mapController != null) {
+      _mapController!.dispose();
+    }
+    super.dispose();
   }
 
   Future<void> _requestLocationPermission() async {
@@ -44,7 +75,6 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
     LocationPermission permission;
 
     try {
-      // Test if location services are enabled.
       serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) {
         setState(() {
@@ -71,7 +101,6 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
         return;
       }
 
-      // Get the current position
       final Position position = await Geolocator.getCurrentPosition();
       if (mounted) {
         setState(() {
@@ -89,7 +118,7 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
 
   Future<void> insertDefaultBillboard() async {
     try {
-      const double latitude = 8.954462; // ~500m north of 8.949962
+      const double latitude = 8.954462;
       const double longitude = 125.581300;
 
       final existing = await Supabase.instance.client
@@ -99,7 +128,7 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
 
       if (existing.isEmpty) {
         await Supabase.instance.client.from('billboards').insert({
-          'id': const Uuid().v4(), // Generate UUID
+          'id': const Uuid().v4(),
           'name': 'Billboard 1 - Butuan North',
           'latitude': latitude,
           'longitude': longitude,
@@ -132,7 +161,6 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
           isLoading = false;
         });
 
-        // Update map markers after fetching billboards
         if (_mapInitialized) {
           updateMap();
         }
@@ -147,24 +175,53 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
     }
   }
 
-  void toggleTracking(String billboardId) {
-    final bool isCurrentlyTracking = trackingStatus[billboardId] ?? false;
+  void _onSliderChanged(double value) {
+    if (value >= 0.9 && !_isSliderActive) {
+      _isSliderActive = true;
+      _sliderController.forward();
+      _toggleGlobalTracking();
+    } else if (value < 0.1 && _isSliderActive) {
+      _isSliderActive = false;
+      _sliderController.reverse();
+      _stopGlobalTracking();
+    }
+  }
 
-    if (isCurrentlyTracking) {
-      stopTrackingById(billboardId);
+  void _toggleGlobalTracking() {
+    if (_isGlobalTracking) {
+      _stopGlobalTracking();
     } else {
-      // Find the billboard data from the list
-      final billboardData = billboards.firstWhere(
-        (b) => b['id'] == billboardId,
-        orElse: () => <String, dynamic>{},
-      );
+      _startGlobalTracking();
+    }
+  }
 
-      if (billboardData.isNotEmpty) {
+  void _startGlobalTracking() {
+    setState(() {
+      _isGlobalTracking = true;
+    });
+
+    // Start tracking all billboards
+    for (final billboard in billboards) {
+      final String billboardId = billboard['id'];
+      if (!trackingStatus.containsKey(billboardId) ||
+          !(trackingStatus[billboardId] ?? false)) {
         setState(() {
-          selectedBillboard = billboardData;
+          selectedBillboard = billboard;
         });
         startTracking();
       }
+    }
+  }
+
+  void _stopGlobalTracking() {
+    setState(() {
+      _isGlobalTracking = false;
+    });
+
+    // Stop tracking all billboards
+    final List<String> billboardIds = trackingStatus.keys.toList();
+    for (final billboardId in billboardIds) {
+      stopTrackingById(billboardId);
     }
   }
 
@@ -203,7 +260,6 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
           currentPosition = newPosition;
         });
 
-        // Only animate camera if map controller is initialized
         if (_mapInitialized && _mapController != null) {
           try {
             await _mapController!.animateCamera(
@@ -214,7 +270,6 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
           }
         }
 
-        // Calculate distance for this specific billboard
         final billboardData = billboards.firstWhere(
           (b) => b['id'] == billboardId,
           orElse: () => <String, dynamic>{},
@@ -233,64 +288,12 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
           billboardData['longitude'] as double,
         );
 
-        print('Distance to ${billboardData['name']}: $distance meters');
-
-        // Use 50 meters as the radius
         if (distance < 50 && !(triggerStatus[billboardId] ?? false)) {
-          try {
-            await Supabase.instance.client.from('alerts').insert({
-              'user_id': userId,
-              'billboard_id': billboardId,
-            });
-
-            if (mounted) {
-              setState(() {
-                triggerStatus[billboardId] = true;
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    '📢 Alert triggered for ${billboardData['name']}!',
-                  ),
-                ),
-              );
-            }
-          } catch (e) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Failed to trigger alert: $e')),
-              );
-            }
-          }
+          await _triggerAlert(billboardId, userId, billboardData);
         } else if (distance >= 50 && (triggerStatus[billboardId] ?? false)) {
-          try {
-            await Supabase.instance.client.from('alerts').delete().match({
-              'user_id': userId,
-              'billboard_id': billboardId,
-            });
-
-            if (mounted) {
-              setState(() {
-                triggerStatus[billboardId] = false;
-              });
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    '✅ Alert cleared for ${billboardData['name']}!',
-                  ),
-                ),
-              );
-            }
-          } catch (e) {
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('Failed to clear alert: $e')),
-              );
-            }
-          }
+          await _clearAlert(billboardId, userId, billboardData);
         }
 
-        // Only update map if it's initialized
         if (_mapInitialized) {
           updateMap();
         }
@@ -310,10 +313,80 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
     }
   }
 
-  void stopTracking() {
-    if (selectedBillboard == null) return;
-    final String billboardId = selectedBillboard!['id'];
-    stopTrackingById(billboardId);
+  Future<void> _triggerAlert(
+    String billboardId,
+    String userId,
+    Map<String, dynamic> billboardData,
+  ) async {
+    try {
+      await Supabase.instance.client.from('alerts').insert({
+        'user_id': userId,
+        'billboard_id': billboardId,
+        'triggered_at': DateTime.now().toUtc().toIso8601String(),
+      });
+
+      if (mounted) {
+        setState(() {
+          triggerStatus[billboardId] = true;
+        });
+        _showAlertNotification(
+          'Alert triggered for ${billboardData['name']}!',
+          isSuccess: true,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showAlertNotification('Failed to trigger alert: $e', isSuccess: false);
+      }
+    }
+  }
+
+  Future<void> _clearAlert(
+    String billboardId,
+    String userId,
+    Map<String, dynamic> billboardData,
+  ) async {
+    try {
+      await Supabase.instance.client.from('alerts').delete().match({
+        'user_id': userId,
+        'billboard_id': billboardId,
+      });
+
+      if (mounted) {
+        setState(() {
+          triggerStatus[billboardId] = false;
+        });
+        _showAlertNotification(
+          'Alert cleared for ${billboardData['name']}!',
+          isSuccess: true,
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        _showAlertNotification('Failed to clear alert: $e', isSuccess: false);
+      }
+    }
+  }
+
+  void _showAlertNotification(String message, {required bool isSuccess}) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            Icon(
+              isSuccess ? Icons.check_circle : Icons.error,
+              color: Colors.white,
+              size: 20,
+            ),
+            const SizedBox(width: 8),
+            Expanded(child: Text(message)),
+          ],
+        ),
+        backgroundColor: isSuccess ? Colors.green : Colors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      ),
+    );
   }
 
   void stopTrackingById(String billboardId) {
@@ -322,12 +395,257 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
 
     setState(() {
       trackingStatus[billboardId] = false;
-      // We don't reset triggerStatus here as it will be cleared when
-      // user gets back in range
     });
 
     if (_mapInitialized) {
       updateMap();
+    }
+  }
+
+  void _onMarkerTap(Map<String, dynamic> billboard) {
+    setState(() {
+      _activationBillboard = billboard;
+    });
+    _showBillboardActivationDialog(billboard);
+  }
+
+  void _showBillboardActivationDialog(Map<String, dynamic> billboard) {
+    final String billboardId = billboard['id'];
+    final bool isTracking = trackingStatus[billboardId] ?? false;
+    final bool isTriggered = triggerStatus[billboardId] ?? false;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: const Icon(Icons.campaign, color: Colors.red, size: 24),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      billboard['name'] ?? 'Billboard',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    Text(
+                      billboard['id']?.toString().substring(0, 8) ?? 'BB-XXX',
+                      style: TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Row(
+                  children: [
+                    const Icon(Icons.location_on, color: Colors.blue, size: 20),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'Location: ${billboard['latitude']?.toStringAsFixed(4)}, ${billboard['longitude']?.toStringAsFixed(4)}',
+                        style: const TextStyle(fontSize: 14),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  Expanded(
+                    child: _buildStatusChip(
+                      'Tracking',
+                      isTracking,
+                      isTracking ? Colors.green : Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _buildStatusChip(
+                      'Alert',
+                      isTriggered,
+                      isTriggered ? Colors.orange : Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton.icon(
+              onPressed: () async {
+                Navigator.of(context).pop();
+                await _manuallyActivateBillboard(billboard);
+              },
+              icon: const Icon(Icons.flash_on),
+              label: const Text('ACTIVATE'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildStatusChip(String label, bool isActive, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withOpacity(0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: isActive ? color : Colors.grey,
+              shape: BoxShape.circle,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: isActive ? color : Colors.grey,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // USER SIDE CODE - Put this in your user map/dashboard
+
+  Future<void> _manuallyActivateBillboard(
+    Map<String, dynamic> billboard,
+  ) async {
+    final currentUser = Supabase.instance.client.auth.currentUser;
+    if (currentUser == null) {
+      _showAlertNotification('User is not logged in', isSuccess: false);
+      return;
+    }
+
+    final String billboardId = billboard['id'];
+
+    try {
+      // Check if alert already exists for this billboard
+      final existing = await Supabase.instance.client
+          .from('alerts')
+          .select()
+          .eq('billboard_id', billboardId)
+          .eq('type_of_activation', 'manual');
+
+      if (existing.isNotEmpty) {
+        // Clear existing alert (DEACTIVATE)
+        await Supabase.instance.client
+            .from('alerts')
+            .delete()
+            .eq('billboard_id', billboardId)
+            .eq('type_of_activation', 'manual');
+
+        setState(() {
+          triggerStatus[billboardId] = false;
+        });
+
+        print('🔴 Billboard ${billboard['name']} deactivated');
+        _showAlertNotification(
+          'Alert cleared for ${billboard['name']}!',
+          isSuccess: true,
+        );
+      } else {
+        // Create new alert (ACTIVATE)
+        await Supabase.instance.client.from('alerts').insert({
+          'billboard_id': billboardId,
+          'triggered_at': DateTime.now().toUtc().toIso8601String(),
+          'type_of_activation': 'manual',
+          'result': 'activated',
+          // ev_registration_no will be null for manual activations
+        });
+
+        setState(() {
+          triggerStatus[billboardId] = true;
+        });
+
+        print('🟢 Billboard ${billboard['name']} activated');
+        _showAlertNotification(
+          'Alert manually activated for ${billboard['name']}!',
+          isSuccess: true,
+        );
+      }
+
+      updateMap(); // Update your user map markers
+    } catch (e) {
+      print('❌ Error in manual activation: $e');
+      _showAlertNotification(
+        'Failed to activate billboard: $e',
+        isSuccess: false,
+      );
+    }
+  }
+
+  // Helper method to check if billboard is active (for UI display)
+  bool _isBillboardActive(String billboardId) {
+    return triggerStatus[billboardId] ?? false;
+  }
+
+  // Method to load billboard status on app start
+  Future<void> _loadBillboardStatus() async {
+    try {
+      final alerts = await Supabase.instance.client
+          .from('alerts')
+          .select('billboard_id')
+          .eq('type_of_activation', 'manual');
+
+      setState(() {
+        triggerStatus.clear();
+        for (var alert in alerts) {
+          triggerStatus[alert['billboard_id']] = true;
+        }
+      });
+    } catch (e) {
+      print('Error loading billboard status: $e');
     }
   }
 
@@ -347,10 +665,15 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
 
         final String billboardId = billboard['id'];
         final bool isTracking = trackingStatus[billboardId] ?? false;
+        final bool isTriggered = triggerStatus[billboardId] ?? false;
 
-        // Use a different hue for tracked billboards
+        // Use different colors based on status
         final double markerHue =
-            isTracking ? BitmapDescriptor.hueGreen : BitmapDescriptor.hueRed;
+            isTriggered
+                ? BitmapDescriptor.hueOrange
+                : isTracking
+                ? BitmapDescriptor.hueGreen
+                : BitmapDescriptor.hueRed;
 
         _markers.add(
           Marker(
@@ -358,18 +681,15 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
             position: billboardLatLng,
             infoWindow: InfoWindow(
               title: billboard['name'] ?? 'Billboard',
-              snippet: isTracking ? 'Currently tracking' : 'Tap to track',
+              snippet:
+                  isTriggered
+                      ? 'Alert Triggered!'
+                      : isTracking
+                      ? 'Currently tracking'
+                      : 'Tap to activate',
             ),
             icon: BitmapDescriptor.defaultMarkerWithHue(markerHue),
-            onTap: () {
-              // When marker is tapped, update selected billboard in dropdown
-              setState(() {
-                selectedBillboard = billboard;
-              });
-
-              // Show the bottom sheet instead of trying to show info window
-              _showBillboardBottomSheet(billboard);
-            },
+            onTap: () => _onMarkerTap(billboard),
           ),
         );
 
@@ -378,9 +698,10 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
             Circle(
               circleId: CircleId('billboardRadius_$billboardId'),
               center: billboardLatLng,
-              radius: 50, // 50 meters
-              fillColor: Colors.green.withOpacity(0.3),
-              strokeColor: Colors.green,
+              radius: 50,
+              fillColor: (isTriggered ? Colors.orange : Colors.green)
+                  .withOpacity(0.3),
+              strokeColor: isTriggered ? Colors.orange : Colors.green,
               strokeWidth: 2,
             ),
           );
@@ -394,7 +715,7 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
         Marker(
           markerId: const MarkerId('currentLocation'),
           position: currentPosition!,
-          infoWindow: const InfoWindow(title: 'You'),
+          infoWindow: const InfoWindow(title: 'Emergency Vehicle'),
           icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueBlue),
         ),
       );
@@ -403,126 +724,170 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
     setState(() {});
   }
 
-  void _showBillboardBottomSheet(Map<String, dynamic> billboard) {
-    final String billboardId = billboard['id'];
-    final bool isTracking = trackingStatus[billboardId] ?? false;
-
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Container(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    billboard['name'] ?? 'Billboard',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Latitude: ${billboard['latitude']}, Longitude: ${billboard['longitude']}',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        if (isTracking) {
-                          stopTrackingById(billboardId);
-                        } else {
-                          setState(() {
-                            selectedBillboard = billboard;
-                          });
-                          startTracking();
-                        }
-                        // Update the bottom sheet UI
-                        setModalState(() {});
-                        // Close the bottom sheet
-                        Navigator.pop(context);
-                      },
-                      icon: Icon(isTracking ? Icons.pause : Icons.play_arrow),
-                      label: Text(
-                        isTracking ? 'Stop Tracking' : 'Start Tracking',
-                      ),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor:
-                            isTracking ? Colors.grey : Colors.redAccent,
-                        foregroundColor: Colors.white,
-                        minimumSize: const Size(double.infinity, 48),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  @override
-  void dispose() {
-    // Cancel all active position streams
-    for (final stream in positionStreams.values) {
-      stream.cancel();
-    }
-    positionStreams.clear();
-
-    // Make sure to dispose controller safely
-    if (_mapInitialized && _mapController != null) {
-      _mapController!.dispose();
-    }
-    super.dispose();
-  }
-
   void _onMapCreated(GoogleMapController controller) {
     _mapController = controller;
     _mapInitialized = true;
     updateMap();
   }
 
+  Widget _buildSlideToStartButton() {
+    return Container(
+      width: double.infinity,
+      height: 60,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors:
+              _isGlobalTracking
+                  ? [Colors.green[400]!, Colors.green[600]!]
+                  : [Colors.red[400]!, Colors.red[600]!],
+        ),
+        borderRadius: BorderRadius.circular(30),
+        boxShadow: [
+          BoxShadow(
+            color: (_isGlobalTracking ? Colors.green : Colors.red).withOpacity(
+              0.3,
+            ),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Stack(
+        children: [
+          // Background track
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(30),
+              color: Colors.black.withOpacity(0.1),
+            ),
+          ),
+          // Slider thumb
+          AnimatedBuilder(
+            animation: _sliderAnimation,
+            builder: (context, child) {
+              return Positioned(
+                left:
+                    4 +
+                    (_sliderAnimation.value *
+                        (MediaQuery.of(context).size.width * 0.9 - 68)),
+                top: 4,
+                child: GestureDetector(
+                  onPanUpdate: (details) {
+                    final RenderBox box =
+                        context.findRenderObject() as RenderBox;
+                    final double localX =
+                        box.globalToLocal(details.globalPosition).dx;
+                    final double progress =
+                        (localX - 30) / (box.size.width - 60);
+                    _onSliderChanged(progress.clamp(0.0, 1.0));
+                  },
+                  child: Container(
+                    width: 52,
+                    height: 52,
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(26),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.2),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      _isGlobalTracking ? Icons.pause : Icons.play_arrow,
+                      color: _isGlobalTracking ? Colors.green : Colors.red,
+                      size: 24,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          // Text
+          Center(
+            child: Text(
+              _isGlobalTracking ? 'TRACKING ACTIVE' : 'START >>> TRACKING',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.2,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Default to Butuan if no current position
     final initialCameraPosition = CameraPosition(
       target: currentPosition ?? const LatLng(8.949962, 125.581300),
       zoom: 15,
     );
 
-    final bool isCurrentBillboardTracking =
-        selectedBillboard != null
-            ? (trackingStatus[selectedBillboard!['id']] ?? false)
-            : false;
-
     return Scaffold(
+      backgroundColor: Colors.grey[50],
       appBar: AppBar(
-        title: const Text('Select a Billboard'),
-        backgroundColor: Colors.redAccent,
+        title: Row(
+          children: [
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.warning, color: Colors.red, size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Text(
+              'ALERT TO DIVERT',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
+            ),
+          ],
+        ),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 2,
+        shadowColor: Colors.black.withOpacity(0.1),
       ),
       body:
           errorMessage != null
               ? Center(
                 child: Padding(
-                  padding: const EdgeInsets.all(16.0),
+                  padding: const EdgeInsets.all(24.0),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: Colors.red.withOpacity(0.1),
+                          borderRadius: BorderRadius.circular(40),
+                        ),
+                        child: const Icon(
+                          Icons.error_outline,
+                          color: Colors.red,
+                          size: 40,
+                        ),
+                      ),
+                      const SizedBox(height: 24),
                       Text(
                         errorMessage!,
-                        style: TextStyle(color: Colors.red),
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.red,
+                          fontWeight: FontWeight.w500,
+                        ),
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
+                      const SizedBox(height: 24),
+                      ElevatedButton.icon(
                         onPressed: () {
                           setState(() {
                             errorMessage = null;
@@ -530,7 +895,19 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
                           fetchBillboards();
                           _requestLocationPermission();
                         },
-                        child: const Text('Retry'),
+                        icon: const Icon(Icons.refresh),
+                        label: const Text('Retry'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 24,
+                            vertical: 12,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
                       ),
                     ],
                   ),
@@ -538,143 +915,129 @@ class _BillboardTrackingScreenState extends State<BillboardTrackingScreen> {
               )
               : Column(
                 children: [
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child:
-                        isLoading
-                            ? const Center(child: CircularProgressIndicator())
-                            : DropdownButtonFormField<Map<String, dynamic>>(
-                              isExpanded: true,
-                              decoration: const InputDecoration(
-                                labelText: 'Choose a billboard',
-                                border: OutlineInputBorder(),
-                              ),
-                              value: selectedBillboard,
-                              hint: const Text('Select a billboard'),
-                              items:
-                                  billboards.isEmpty
-                                      ? []
-                                      : billboards.map((billboard) {
-                                        final bool isTracking =
-                                            trackingStatus[billboard['id']] ??
-                                            false;
-                                        return DropdownMenuItem<
-                                          Map<String, dynamic>
-                                        >(
-                                          value: billboard,
-                                          child: Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  billboard['name'] ??
-                                                      'Unnamed Billboard',
-                                                ),
-                                              ),
-                                              if (isTracking)
-                                                const Icon(
-                                                  Icons.track_changes,
-                                                  color: Colors.green,
-                                                  size: 18,
-                                                ),
-                                            ],
-                                          ),
-                                        );
-                                      }).toList(),
-                              onChanged: (value) {
-                                if (value != null) {
-                                  setState(() => selectedBillboard = value);
-                                  if (_mapInitialized &&
-                                      _mapController != null &&
-                                      value['latitude'] != null &&
-                                      value['longitude'] != null) {
-                                    try {
-                                      _mapController!.animateCamera(
-                                        CameraUpdate.newLatLng(
-                                          LatLng(
-                                            value['latitude'] as double,
-                                            value['longitude'] as double,
-                                          ),
-                                        ),
-                                      );
-                                      _mapController!.animateCamera(
-                                        CameraUpdate.zoomTo(17),
-                                      );
-                                    } catch (e) {
-                                      print('Error animating camera: $e');
-                                    }
-                                  }
-                                  if (_mapInitialized) {
-                                    updateMap();
-                                  }
-                                }
-                              },
-                            ),
-                  ),
+                  // Map Section
                   Expanded(
-                    child: GoogleMap(
-                      initialCameraPosition: initialCameraPosition,
-                      onMapCreated: _onMapCreated,
-                      myLocationEnabled: true,
-                      myLocationButtonEnabled: true,
-                      mapToolbarEnabled: true,
-                      zoomControlsEnabled: true,
-                      markers: _markers,
-                      circles: _circles,
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.all(16.0),
-                    child:
-                        isCurrentBillboardTracking
-                            ? ElevatedButton.icon(
-                              onPressed: stopTracking,
-                              icon: const Icon(Icons.pause),
-                              label: const Text('Stop Tracking'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.grey,
-                                foregroundColor: Colors.white,
-                                minimumSize: const Size(double.infinity, 48),
-                              ),
-                            )
-                            : ElevatedButton.icon(
-                              onPressed:
-                                  selectedBillboard == null || isLoading
-                                      ? null
-                                      : startTracking,
-                              icon: const Icon(Icons.play_arrow),
-                              label: const Text('Start Tracking'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.redAccent,
-                                foregroundColor: Colors.white,
-                                minimumSize: const Size(double.infinity, 48),
-                              ),
-                            ),
-                  ),
-                  if (positionStreams.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(
-                        bottom: 16.0,
-                        left: 16.0,
-                        right: 16.0,
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.info_outline,
-                            size: 16,
-                            color: Colors.blue,
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            'Tracking ${positionStreams.length} billboard${positionStreams.length > 1 ? 's' : ''}',
-                            style: TextStyle(color: Colors.blue),
+                    flex: 3,
+                    child: Container(
+                      margin: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 8,
+                            offset: const Offset(0, 4),
                           ),
                         ],
                       ),
+                      clipBehavior: Clip.hardEdge,
+                      child: GoogleMap(
+                        initialCameraPosition: initialCameraPosition,
+                        onMapCreated: _onMapCreated,
+                        myLocationEnabled: true,
+                        myLocationButtonEnabled: false,
+                        mapToolbarEnabled: false,
+                        zoomControlsEnabled: false,
+                        markers: _markers,
+                        circles: _circles,
+                        mapType: MapType.normal,
+                      ),
                     ),
+                  ),
+
+                  // Status Information
+                  Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 16),
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.05),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _buildInfoCard(
+                            'Billboards',
+                            billboards.length.toString(),
+                            Icons.campaign,
+                            Colors.blue,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildInfoCard(
+                            'Tracking',
+                            trackingStatus.values
+                                .where((v) => v)
+                                .length
+                                .toString(),
+                            Icons.track_changes,
+                            Colors.green,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _buildInfoCard(
+                            'Alerts',
+                            triggerStatus.values
+                                .where((v) => v)
+                                .length
+                                .toString(),
+                            Icons.warning,
+                            Colors.orange,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // Slide to Start Button
+                  Container(
+                    margin: const EdgeInsets.all(16),
+                    child: _buildSlideToStartButton(),
+                  ),
                 ],
               ),
+    );
+  }
+
+  Widget _buildInfoCard(
+    String title,
+    String value,
+    IconData icon,
+    Color color,
+  ) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 8),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 24),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(
+            title,
+            style: TextStyle(fontSize: 12, color: color.withOpacity(0.8)),
+          ),
+        ],
+      ),
     );
   }
 }
